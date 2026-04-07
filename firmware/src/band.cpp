@@ -3,15 +3,20 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include "packet_types.h"
+#include "MPU6050.h"
 
 ///////////////
 // GLOBALS
 ///////////////
 #define IMU_SAMPLE_INTERVAL 200 // in milliseconds
+#define SCL_PIN 5
+#define SDA_PIN 4
+
+MPU6050 imu;
 esp_now_peer_info_t peerInfo;
-uint8_t laptopDongleAddress[] = {0x24, 0x6F, 0x28, 0x1A, 0x2B, 0x3C}; // replace with actual MAC address of laptop dongle
+uint8_t laptopDongleAddress[] = {0xE8, 0xF6, 0x0A, 0x16, 0xFF, 0x94}; // laptop dongle MAC address
 uint8_t numMotors;
-uint8_t motorpins[12]; //max 12 motors being controlled
+uint8_t motorpins[4];
 uint16_t successful_sends = 0;
 uint16_t failed_sends = 0;
 unsigned long last_imu_get_time = 0;
@@ -39,20 +44,14 @@ void setup() {
   last_imu_get_time = 0;
   Serial.begin(115200);
   displayMACAddress();
-  //initESPNOW();
+  initESPNOW();
   //initIMU();
-  //initMotors({0,1,2,3}, 4);
+  uint8_t mtrPins[] = {0,1,2,3}; // example motor pins
+  initMotors(mtrPins, 4);
 }
 
 void loop() {
-  if(check_disconnect()) {
-    return;
-  }
-  if(millis() - last_imu_get_time > IMU_SAMPLE_INTERVAL) { // send IMU data every 200ms
-    last_imu_get_time = millis();
-    imu_data_t imu_data = get_imu_data();
-    esp_now_send(laptopDongleAddress, (uint8_t *) &imu_data, sizeof(imu_data_t));  
-  }
+  //displayMACAddress();
 }
 
 ///////////////
@@ -61,10 +60,9 @@ void loop() {
 
 // motor control
 // initalize numMotors, motorpins, pinMode, and set all motors to off
-int initMotors(uint8_t motorpins[], uint8_t numMotors) {
-  numMotors = numMotors;
-  for (int i = 0; i < numMotors; i++) {
-    motorpins[i] = motorpins[i];
+int initMotors(uint8_t mtrpins[]) {
+  for (int i = 0; i < 4; i++) {
+    motorpins[i] = mtrpins[i];
     pinMode(motorpins[i], OUTPUT);
     digitalWrite(motorpins[i], LOW); // start with motors off
   }
@@ -73,18 +71,33 @@ int initMotors(uint8_t motorpins[], uint8_t numMotors) {
 
 //update motor states based on motor_update struct received through ESPNOW
 int updateMotorStates(motor_update_t motor_update) {
-  for (int i = 0; i < motor_update.amount_of_motors; i++) {
+  for (int i = 0; i < 4; i++) {
     digitalWrite(motorpins[i], motor_update.motor_states[i]);
   }
   return 1;
 }
 
 // init IMU to calibrate it
-int initIMU() {}
-int calibrateIMU() {}
+int initIMU() {
+  Wire.begin(SDA_PIN, SCL_PIN);
+  imu.initialize();
+
+}
+
+int calibrateIMU() {    
+    // 1. Reset offsets to 0 first
+    imu.setXAccelOffset(0); imu.setYAccelOffset(0); imu.setZAccelOffset(0);
+    imu.setXGyroOffset(0);  imu.setYGyroOffset(0);  imu.setZGyroOffset(0);
+    // 2. Run the internal calibration routine
+    // The number '6' tells it to run 6 loops of refinement
+    imu.CalibrateAccel(6);
+    imu.CalibrateGyro(6);
+}
+
 imu_data_t get_imu_data() {
   imu_data_t data;
-  // populate data with actual IMU readings
+  // Read raw accel/gyro measurements
+  imu.getMotion6(&data.ax, &data.ay, &data.az, &data.gx, &data.gy, &data.gz);
   return data;
 }
 
@@ -101,7 +114,6 @@ int initESPNOW(uint8_t channel = 1) {
   if (esp_now_init() != ESP_OK){return 0;}
 
   esp_now_register_recv_cb(onDataRecv);
-  esp_now_register_send_cb(onDataSent);
 
   memcpy(peerInfo.peer_addr, laptopDongleAddress, 6);
   peerInfo.channel = channel;
@@ -117,15 +129,6 @@ void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   motor_update_t motor_update;
   motor_update_t* motor_update_ptr = (motor_update_t*)memcpy(&motor_update, incomingData, sizeof(motor_update_t));
   updateMotorStates(motor_update);
-}
-
-void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  if (status == ESP_NOW_SEND_FAIL)
-  {
-    failed_sends++;
-    return;
-  }
-  successful_sends++;
 }
 
 //assumes serial.begin() has already been called
