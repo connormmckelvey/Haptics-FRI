@@ -25,7 +25,7 @@ unsigned long last_imu_get_time = 0;
 ///////////////
 // FUNCTION DECLARATIONS
 ///////////////
-int initMotors(uint8_t motorpins[], uint8_t numMotors);
+int initMotors(uint8_t motorpins[]);
 int updateMotorStates(motor_update_t motor_update);
 int initIMU();
 int calibrateIMU();
@@ -43,15 +43,23 @@ int check_disconnect();
 void setup() {
   last_imu_get_time = 0;
   Serial.begin(115200);
-  displayMACAddress();
-  initESPNOW();
+  //displayMACAddress();
+  //initESPNOW();
   //initIMU();
-  uint8_t mtrPins[] = {0,1,2,3}; // example motor pins
-  initMotors(mtrPins, 4);
+  uint8_t mtrPins[] = {2,3,4,5}; // example motor pins
+  initMotors(mtrPins);
 }
 
 void loop() {
   //displayMACAddress();
+  motor_update_t mtest;
+  mtest.motor_states[0] = HIGH;
+  mtest.motor_states[1] = LOW;
+  mtest.motor_states[2] = LOW;
+  mtest.motor_states[3] = LOW;
+  updateMotorStates(mtest);
+  Serial.println("Motor states updated");
+  delay(1000);
 }
 
 ///////////////

@@ -2265,10 +2265,10 @@
 		(uuid "79027f17-9edb-443a-a2fc-3597f1c1cb6e")
 	)
 	(junction
-		(at 83.82 137.16)
+		(at 76.2 109.22)
 		(diameter 0)
 		(color 0 0 0 0)
-		(uuid "b3c5ac60-7fc0-4cf2-acfd-70d47084545b")
+		(uuid "835a8e3c-ced3-49ce-858f-8082ad6f8500")
 	)
 	(junction
 		(at 38.1 143.51)
@@ -2450,6 +2450,16 @@
 	)
 	(wire
 		(pts
+			(xy 76.2 109.22) (xy 78.74 109.22)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "487b00a5-4932-4ddd-bd3e-06cc70456c2e")
+	)
+	(wire
+		(pts
 			(xy 173.99 116.84) (xy 184.15 116.84)
 		)
 		(stroke
@@ -2530,16 +2540,6 @@
 	)
 	(wire
 		(pts
-			(xy 87.63 144.78) (xy 83.82 144.78)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "7842932a-0873-4008-aa85-b622d05f70ad")
-	)
-	(wire
-		(pts
 			(xy 172.72 109.22) (xy 172.72 110.49)
 		)
 		(stroke
@@ -2567,16 +2567,6 @@
 			(type default)
 		)
 		(uuid "7c2a0ad5-da98-4d35-a8b2-e2866a4b672d")
-	)
-	(wire
-		(pts
-			(xy 83.82 144.78) (xy 83.82 137.16)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "7f4d400f-e0cf-42a6-ad17-04a34b7c45bb")
 	)
 	(wire
 		(pts
@@ -2670,7 +2660,7 @@
 	)
 	(wire
 		(pts
-			(xy 73.66 137.16) (xy 83.82 137.16)
+			(xy 73.66 137.16) (xy 149.86 137.16)
 		)
 		(stroke
 			(width 0)
@@ -2697,16 +2687,6 @@
 			(type default)
 		)
 		(uuid "beead605-28af-42ed-8be1-2c762733e7cf")
-	)
-	(wire
-		(pts
-			(xy 83.82 137.16) (xy 149.86 137.16)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "c094611c-8587-40e2-b2a6-e65d798c8fc6")
 	)
 	(wire
 		(pts
@@ -2750,7 +2730,7 @@
 	)
 	(wire
 		(pts
-			(xy 36.83 109.22) (xy 78.74 109.22)
+			(xy 36.83 109.22) (xy 76.2 109.22)
 		)
 		(stroke
 			(width 0)
@@ -2767,6 +2747,16 @@
 			(type default)
 		)
 		(uuid "d7965d89-9a92-4197-bbbd-48ec1a8cb72a")
+	)
+	(wire
+		(pts
+			(xy 87.63 144.78) (xy 76.2 144.78)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "dd9f974f-a9dc-4b24-a560-3953f6ef708d")
 	)
 	(wire
 		(pts
@@ -2797,6 +2787,16 @@
 			(type default)
 		)
 		(uuid "e48f1e0a-a02f-4d78-88c7-383e74a08064")
+	)
+	(wire
+		(pts
+			(xy 76.2 144.78) (xy 76.2 109.22)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e6bc2ad9-a275-40c0-a343-4b7a6e3f29b3")
 	)
 	(wire
 		(pts
@@ -3472,7 +3472,7 @@
 				)
 			)
 		)
-		(property "Footprint" "SW_Slide_SPDT_SS12D07"
+		(property "Footprint" ""
 			(at 92.71 144.78 0)
 			(effects
 				(font

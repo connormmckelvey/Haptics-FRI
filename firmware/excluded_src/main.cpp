@@ -11,10 +11,12 @@ void setup() {
   }
 
   Serial.println("Booted; starting loop prints...");
+  pinMode(2, OUTPUT); // Set GPIO2 as an output pin (built-in LED on many ESP32 boards)
 }
 
 
 void loop() {
   Serial.println("Hello, World!");
-  delay(1000); // Wait for 1 second before printing again
+  digitalWrite(2, HIGH); // Turn the LED on
+  delay(1000); // Wait for 1 sec    ond before printing again
 }
