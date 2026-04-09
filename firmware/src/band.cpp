@@ -89,6 +89,31 @@ int updateMotorStates(motor_update_t motor_update) {
   return 1;
 }
 
+// Returns 0-3 representing which 90-degree quadrant the wrist is in
+uint8_t getWristQuadrant() {
+  imu_data_t data = get_imu_data();
+  
+  // Convert accelerometer to roll angle (-180 to 180 degrees)
+  float roll = atan2(data.ay, data.az) * 180.0 / M_PI;
+  
+  // Shift to 0-360
+  if (roll < 0) roll += 360.0;
+  
+  // Quantize into 4 quadrants
+  return (uint8_t)(roll / 90.0) % 4;
+}
+
+// Remap motor update based on wrist rotation
+motor_update_t remapMotors(motor_update_t received) {
+  motor_update_t remapped{};
+  uint8_t offset = getWristQuadrant();
+  
+  for (int i = 0; i < 4; i++) {
+    remapped.motor_states[(i + offset) % 4] = received.motor_states[i];
+  }
+  return remapped;
+}
+
 // init IMU to calibrate it
 int initIMU() {
   Wire.begin(SDA_PIN, SCL_PIN);
@@ -128,12 +153,14 @@ int initESPNOW(uint8_t channel = 1) {
 }
 
 void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  motor_update_t motor_update;
-  motor_update_t* motor_update_ptr = (motor_update_t*)memcpy(&motor_update, incomingData, sizeof(motor_update_t));
-  updateMotorStates(motor_update);
+  motor_update_t received;
+  memcpy(&received, incomingData, sizeof(motor_update_t));
+  motor_update_t remapped = remapMotors(received);
+  updateMotorStates(remapped);
+
   Serial.println("Updated Motor States:");
   for (int i = 0; i < 4; i++) {
-    Serial.print(motor_update.motor_states[i]);
+    Serial.print(remapped.motor_states[i]);
     Serial.print(" ");
   }
   Serial.println();
