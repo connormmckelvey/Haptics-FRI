@@ -10,8 +10,9 @@
 // GLOBALS
 ///////////////
 esp_now_peer_info_t peerInfo;
-uint8_t bandAddress[] = {0x34, 0xCD, 0xB0, 0x53, 0x36, 0x28}; // band MAC address
-uint8_t xiaobandAddress[] = {0xE8, 0xF6, 0x0A, 0x17, 0x00, 0xC0}; // seeed band MAC address
+//uint8_t bandAddress[] = {0x34, 0xCD, 0xB0, 0x53, 0x36, 0x28}; // band MAC address
+uint8_t bandAddress[] = {0xE8, 0xF6, 0x0A, 0x17, 0x00, 0xC0}; // seeed band MAC address with dot on top of chip
+
 
 uint16_t successful_sends = 0;
 uint16_t failed_sends = 0;
@@ -22,13 +23,14 @@ uint16_t failed_sends = 0;
 #endif
 
 #ifndef DONGLE_DUMMY_PERIOD_MS
-#define DONGLE_DUMMY_PERIOD_MS 200
+#define DONGLE_DUMMY_PERIOD_MS 2000
 #endif
 
 #ifndef DONGLE_DUMMY_MOTOR_COUNT
 #define DONGLE_DUMMY_MOTOR_COUNT 4
 #endif
 
+int initResult;
 
 ///////////////
 // FUNCTION DECLARATIONS
@@ -46,13 +48,18 @@ void setup() {
   displayMACAddress();
 
   // Initialize ESP-NOW + peer.
-  initESPNOW(1);
+  initResult = initESPNOW(6);
+  Serial.print("ESP-NOW init result: ");
+  Serial.println(initResult);
 }
 
 void loop(){
+  //displayMACAddress();
 #if DONGLE_DUMMY_MODE
   static unsigned long lastSendMs = 0;
   static uint8_t step = 0;
+
+  const uint8_t kMotorCount = 4;
 
   const unsigned long nowMs = millis();
   if (nowMs - lastSendMs < DONGLE_DUMMY_PERIOD_MS) {
@@ -61,18 +68,19 @@ void loop(){
   lastSendMs = nowMs;
 
   motor_update_t motorUpdate{};
-  motorUpdate.amount_of_motors = (DONGLE_DUMMY_MOTOR_COUNT > 12) ? 12 : DONGLE_DUMMY_MOTOR_COUNT;
-  if (motorUpdate.amount_of_motors == 0) {
-    motorUpdate.amount_of_motors = 1;
-  }
-  motorUpdate.motor_states[step % motorUpdate.amount_of_motors] = 1;
+  motorUpdate.motor_states[step % kMotorCount] = 1;
   step++;
-
+  Serial.print("Sending dummy motor update: ");
+  for (int i = 0; i < kMotorCount; i++) {
+    Serial.print(motorUpdate.motor_states[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
   esp_now_send(bandAddress, reinterpret_cast<const uint8_t*>(&motorUpdate), sizeof(motor_update_t));
   return;
 #else
   // Non-blocking serial -> motor_update_t framing.
-  // Expects raw bytes for a motor_update_t (sizeof == 13).
+  // Expects raw bytes for a motor_update_t (sizeof == 4).
   static uint8_t rxBuf[sizeof(motor_update_t)];
   static size_t rxLen = 0;
 
@@ -107,7 +115,7 @@ int initESPNOW(uint8_t channel = 1) {
   // Set the ESP32 Wi-Fi channel
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_promiscuous(false);
 
   if (esp_now_init() != ESP_OK){return 0;}
 
@@ -127,9 +135,11 @@ void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   if (status == ESP_NOW_SEND_FAIL)
   {
     failed_sends++;
+    Serial.println("Failed to send motor update");
     return;
   }
   successful_sends++;
+  Serial.println("Successfully sent motor update");
 }
 
 //assumes serial.begin() has already been called

@@ -14,12 +14,13 @@
 
 MPU6050 imu;
 esp_now_peer_info_t peerInfo;
-uint8_t laptopDongleAddress[] = {0xE8, 0xF6, 0x0A, 0x16, 0xFF, 0x94}; // laptop dongle MAC address
+//uint8_t laptopDongleAddress[] = {0xE8, 0xF6, 0x0A, 0x16, 0xFF, 0x94}; // laptop dongle MAC address
 uint8_t numMotors;
 uint8_t motorpins[4];
 uint16_t successful_sends = 0;
 uint16_t failed_sends = 0;
 unsigned long last_imu_get_time = 0;
+int initResult;
 
 
 ///////////////
@@ -34,6 +35,7 @@ int initESPNOW(uint8_t channel);
 void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
 void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void displayMACAddress();
+void displayChannel();
 int check_disconnect();
 
 
@@ -43,8 +45,8 @@ int check_disconnect();
 void setup() {
   last_imu_get_time = 0;
   Serial.begin(115200);
-  //displayMACAddress();
-  //initESPNOW();
+  displayMACAddress();
+  initResult = initESPNOW(6);
   //initIMU();
   uint8_t mtrPins[] = {2,3,4,5}; // example motor pins
   initMotors(mtrPins);
@@ -52,14 +54,16 @@ void setup() {
 
 void loop() {
   //displayMACAddress();
-  motor_update_t mtest;
-  mtest.motor_states[0] = HIGH;
-  mtest.motor_states[1] = LOW;
-  mtest.motor_states[2] = LOW;
-  mtest.motor_states[3] = LOW;
-  updateMotorStates(mtest);
-  Serial.println("Motor states updated");
-  delay(1000);
+  //Serial.print("init result: ");
+  //Serial.println(initResult);
+  // motor_update_t mtest;
+  // mtest.motor_states[0] = HIGH;
+  // mtest.motor_states[1] = LOW;
+  // mtest.motor_states[2] = LOW;
+  // mtest.motor_states[3] = LOW;
+  // updateMotorStates(mtest);
+  // Serial.println("Motor states updated");
+  //delay(1000);
 }
 
 ///////////////
@@ -109,27 +113,17 @@ imu_data_t get_imu_data() {
   return data;
 }
 
-// init ESPNOW protocol
-//returns 1 if successful, 0 if failed to init ESPNOW, -1 if failed to add peer
 int initESPNOW(uint8_t channel = 1) {
   WiFi.mode(WIFI_STA);
 
-  // Set the ESP32 Wi-Fi channel
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_promiscuous(false); // was being called twice, also should be false after setting channel
 
-  if (esp_now_init() != ESP_OK){return 0;}
+  if (esp_now_init() != ESP_OK) { return 0; }
 
   esp_now_register_recv_cb(onDataRecv);
 
-  memcpy(peerInfo.peer_addr, laptopDongleAddress, 6);
-  peerInfo.channel = channel;
-  peerInfo.encrypt = false;
-
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    return -1;
-  }
   return 1;
 }
 
@@ -137,6 +131,12 @@ void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   motor_update_t motor_update;
   motor_update_t* motor_update_ptr = (motor_update_t*)memcpy(&motor_update, incomingData, sizeof(motor_update_t));
   updateMotorStates(motor_update);
+  Serial.println("Updated Motor States:");
+  for (int i = 0; i < 4; i++) {
+    Serial.print(motor_update.motor_states[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
 }
 
 //assumes serial.begin() has already been called
@@ -146,17 +146,17 @@ void displayMACAddress(){
   Serial.println(WiFi.macAddress());
 }
 
+void displayChannel(){
+  uint8_t primaryChan;
+  wifi_second_chan_t secondChan;
+  esp_wifi_get_channel(&primaryChan, &secondChan);
+  Serial.print("Actual channel: ");
+  Serial.println(primaryChan);
+}
+
 // send IMU data through ESPNOW
 // receive motor control commands through ESPNOW
 // toggle motors correctly
 
 // check if dongle exists, try to reconnect if it doesn't, return 1 disconnected, 0 if connected
-int check_disconnect(){
-  if(esp_now_is_peer_exist(laptopDongleAddress) == false) {
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      return 1;
-    }
-    return 0;
-  }
-  return 0;
-}
+int check_disconnect(){return 0;}

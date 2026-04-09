@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Send dummy `motor_update_t` packets over a serial port.
 
-Firmware expects the raw bytes of:
-- motor_states[12] : uint8_t (0 or 1)
-- amount_of_motors : uint8_t
+Packet format (matches `include/packet_types.h`):
+- motor_states[4] : uint8_t (0 or 1)
 
-Total: 13 bytes per packet.
+Total: 4 bytes per packet.
 """
 
 from __future__ import annotations
@@ -15,22 +14,21 @@ import sys
 import time
 
 
-def build_packet(amount_of_motors: int, on_index: int | None) -> bytes:
-    if not (1 <= amount_of_motors <= 12):
-        raise ValueError("amount_of_motors must be in [1, 12]")
+MOTOR_COUNT = 4
 
-    motor_states = [0] * 12
+
+def build_packet(on_index: int | None) -> bytes:
+    motor_states = [0] * MOTOR_COUNT
     if on_index is not None:
-        motor_states[on_index % amount_of_motors] = 1
+        motor_states[on_index % MOTOR_COUNT] = 1
 
-    return bytes(motor_states) + bytes([amount_of_motors])
+    return bytes(motor_states)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Send dummy motor_update_t packets over serial")
     parser.add_argument("--port", default="COM6", help="Serial port (e.g. COM6)")
     parser.add_argument("--baud", type=int, default=115200, help="Baud rate (default: 115200)")
-    parser.add_argument("--motors", type=int, default=4, help="amount_of_motors field (1-12)")
     parser.add_argument("--period", type=float, default=0.2, help="Seconds between packets")
     parser.add_argument(
         "--mode",
@@ -64,13 +62,11 @@ def main() -> int:
         try:
             while True:
                 if args.mode == "all_off":
-                    packet = build_packet(args.motors, on_index=None)
+                    packet = build_packet(on_index=None)
                 elif args.mode == "all_on":
-                    # Set first N motors on, remaining off.
-                    motor_states = [1] * min(args.motors, 12) + [0] * (12 - min(args.motors, 12))
-                    packet = bytes(motor_states) + bytes([args.motors])
+                    packet = bytes([1] * MOTOR_COUNT)
                 else:  # chase
-                    packet = build_packet(args.motors, on_index=i)
+                    packet = build_packet(on_index=i)
 
                 ser.write(packet)
                 ser.flush()
