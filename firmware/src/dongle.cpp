@@ -18,17 +18,9 @@ uint16_t successful_sends = 0;
 uint16_t failed_sends = 0;
 
 // Testing: set to 1 to ignore Serial and send dummy motor updates over ESP-NOW.
-#ifndef DONGLE_DUMMY_MODE
 #define DONGLE_DUMMY_MODE 1
-#endif
-
-#ifndef DONGLE_DUMMY_PERIOD_MS
 #define DONGLE_DUMMY_PERIOD_MS 2000
-#endif
-
-#ifndef DONGLE_DUMMY_MOTOR_COUNT
 #define DONGLE_DUMMY_MOTOR_COUNT 4
-#endif
 
 int initResult;
 
@@ -54,7 +46,6 @@ void setup() {
 }
 
 void loop(){
-  //displayMACAddress();
 #if DONGLE_DUMMY_MODE
   static unsigned long lastSendMs = 0;
   static uint8_t step = 0;
@@ -79,10 +70,15 @@ void loop(){
   esp_now_send(bandAddress, reinterpret_cast<const uint8_t*>(&motorUpdate), sizeof(motor_update_t));
   return;
 #else
-  // Non-blocking serial -> motor_update_t framing.
-  // Expects raw bytes for a motor_update_t (sizeof == 4).
   static uint8_t rxBuf[sizeof(motor_update_t)];
   static size_t rxLen = 0;
+  static unsigned long lastByteMs = 0;
+
+  // Reset stale partial packet
+  if (rxLen > 0 && millis() - lastByteMs > 10) {
+    Serial.println("Serial timeout, resetting buffer");
+    rxLen = 0;
+  }
 
   while (Serial.available() > 0) {
     const int byteRead = Serial.read();
@@ -90,12 +86,12 @@ void loop(){
       break;
     }
 
+    lastByteMs = millis();
     rxBuf[rxLen++] = static_cast<uint8_t>(byteRead);
 
     if (rxLen >= sizeof(motor_update_t)) {
       motor_update_t motorUpdate;
       memcpy(&motorUpdate, rxBuf, sizeof(motor_update_t));
-
       esp_now_send(bandAddress, reinterpret_cast<const uint8_t*>(&motorUpdate), sizeof(motor_update_t));
       rxLen = 0;
     }

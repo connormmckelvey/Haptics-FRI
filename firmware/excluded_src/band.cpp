@@ -28,8 +28,10 @@ int initResult;
 ///////////////
 int initMotors(uint8_t motorpins[]);
 int updateMotorStates(motor_update_t motor_update);
+uint8_t getWristQuadrant();
+motor_update_t remapMotors(motor_update_t received);
 int initIMU();
-int calibrateIMU();
+void calibrateIMU();
 imu_data_t get_imu_data();
 int initESPNOW(uint8_t channel);
 void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
@@ -47,7 +49,9 @@ void setup() {
   Serial.begin(115200);
   displayMACAddress();
   initResult = initESPNOW(6);
-  //initIMU();
+  if (initIMU()) {
+    calibrateIMU();
+  }  
   uint8_t mtrPins[] = {2,3,4,5}; // example motor pins
   initMotors(mtrPins);
 }
@@ -114,29 +118,34 @@ motor_update_t remapMotors(motor_update_t received) {
   return remapped;
 }
 
-// init IMU to calibrate it
+
 int initIMU() {
   Wire.begin(SDA_PIN, SCL_PIN);
   imu.initialize();
-
+  
+  if (!imu.testConnection()) {
+    Serial.println("MPU6050 connection failed");
+    return 0;
+  }
+  Serial.println("MPU6050 connection successful");
+  return 1;
 }
 
-int calibrateIMU() {    
-    // 1. Reset offsets to 0 first
-    imu.setXAccelOffset(0); imu.setYAccelOffset(0); imu.setZAccelOffset(0);
-    imu.setXGyroOffset(0);  imu.setYGyroOffset(0);  imu.setZGyroOffset(0);
-    // 2. Run the internal calibration routine
-    // The number '6' tells it to run 6 loops of refinement
-    imu.CalibrateAccel(6);
-    imu.CalibrateGyro(6);
+void calibrateIMU() {    
+  Serial.println("Calibrating IMU, hold still...");
+  imu.setXAccelOffset(0); imu.setYAccelOffset(0); imu.setZAccelOffset(0);
+  imu.setXGyroOffset(0);  imu.setYGyroOffset(0);  imu.setZGyroOffset(0);
+  imu.CalibrateAccel(6);
+  imu.CalibrateGyro(6);
+  Serial.println("Calibration complete");
 }
 
 imu_data_t get_imu_data() {
   imu_data_t data;
-  // Read raw accel/gyro measurements
   imu.getMotion6(&data.ax, &data.ay, &data.az, &data.gx, &data.gy, &data.gz);
   return data;
 }
+
 
 int initESPNOW(uint8_t channel = 1) {
   WiFi.mode(WIFI_STA);
