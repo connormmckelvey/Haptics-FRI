@@ -9,8 +9,8 @@
 // GLOBALS
 ///////////////
 #define IMU_SAMPLE_INTERVAL 200 // in milliseconds
-#define SCL_PIN 5
-#define SDA_PIN 4
+#define SCL_PIN 7
+#define SDA_PIN 6
 
 MPU6050 imu;
 esp_now_peer_info_t peerInfo;
@@ -52,22 +52,43 @@ void setup() {
   if (initIMU()) {
     calibrateIMU();
   }  
-  uint8_t mtrPins[] = {2,3,4,5}; // example motor pins
+  uint8_t mtrPins[] = {2,3,4,5};
   initMotors(mtrPins);
 }
 
 void loop() {
-  //displayMACAddress();
-  //Serial.print("init result: ");
-  //Serial.println(initResult);
-  // motor_update_t mtest;
-  // mtest.motor_states[0] = HIGH;
-  // mtest.motor_states[1] = LOW;
-  // mtest.motor_states[2] = LOW;
-  // mtest.motor_states[3] = LOW;
-  // updateMotorStates(mtest);
-  // Serial.println("Motor states updated");
-  //delay(1000);
+
+  // //test, get imu data and prints it every 200ms to prevent watchdog reset, but ignore the actual data for now since we haven't implemented remapping yet
+  // if (millis() - last_imu_get_time >= IMU_SAMPLE_INTERVAL) {
+  //   last_imu_get_time = millis();
+  //   imu_data_t data = get_imu_data();
+  //   Serial.print("IMU Data - ax: "); Serial.print(data.ax);
+  //   Serial.print(", ay: "); Serial.print(data.ay);
+  //   Serial.print(", az: "); Serial.print(data.az);
+  //   Serial.print(", gx: "); Serial.print(data.gx);
+  //   Serial.print(", gy: "); Serial.print(data.gy);
+  //   Serial.print(", gz: "); Serial.println(data.gz);
+  // }
+  // // test just loop through which motor is on every 2 seconds
+  // static unsigned long lastSendMs = 0;
+  // const unsigned long nowMs = millis();
+  // if (nowMs - lastSendMs >= 2000) {
+  //   lastSendMs = nowMs;
+  //   motor_update_t motorUpdate{};
+  //   motorUpdate.motor_states[(nowMs / 2000) % 4] = 1;
+  //   updateMotorStates(motorUpdate);
+  // }
+  displayMACAddress();
+  Serial.print("init result: ");
+  Serial.println(initResult);
+  motor_update_t mtest;
+  mtest.motor_states[0] = HIGH;
+  mtest.motor_states[1] = LOW;
+  mtest.motor_states[2] = LOW;
+  mtest.motor_states[3] = LOW;
+  updateMotorStates(mtest);
+  Serial.println("Motor states updated");
+  delay(1000);
 }
 
 ///////////////
