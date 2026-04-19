@@ -9,6 +9,7 @@
 // GLOBALS
 ///////////////
 #define IMU_SAMPLE_INTERVAL 200 // in milliseconds
+#define IMU_CALIBRATION_INTERVAL 1000000 // in milliseconds
 #define SCL_PIN 7
 #define SDA_PIN 6
 
@@ -20,6 +21,7 @@ uint8_t motorpins[4];
 uint16_t successful_sends = 0;
 uint16_t failed_sends = 0;
 unsigned long last_imu_get_time = 0;
+unsigned long last_imu_calibration_time = 0;
 int initResult;
 
 
@@ -28,7 +30,8 @@ int initResult;
 ///////////////
 int initMotors(uint8_t motorpins[]);
 int updateMotorStates(motor_update_t motor_update);
-uint8_t getWristQuadrant();
+float getWristPitchDegrees();
+uint8_t getWristMotorOffset();
 motor_update_t remapMotors(motor_update_t received);
 int initIMU();
 void calibrateIMU();
@@ -57,38 +60,33 @@ void setup() {
 }
 
 void loop() {
+  if (millis() - last_imu_calibration_time >= IMU_CALIBRATION_INTERVAL) {
+    last_imu_calibration_time = millis();
+    calibrateIMU();
+  }
 
-  // //test, get imu data and prints it every 200ms to prevent watchdog reset, but ignore the actual data for now since we haven't implemented remapping yet
-  // if (millis() - last_imu_get_time >= IMU_SAMPLE_INTERVAL) {
-  //   last_imu_get_time = millis();
-  //   imu_data_t data = get_imu_data();
-  //   Serial.print("IMU Data - ax: "); Serial.print(data.ax);
-  //   Serial.print(", ay: "); Serial.print(data.ay);
-  //   Serial.print(", az: "); Serial.print(data.az);
-  //   Serial.print(", gx: "); Serial.print(data.gx);
-  //   Serial.print(", gy: "); Serial.print(data.gy);
-  //   Serial.print(", gz: "); Serial.println(data.gz);
-  // }
-  // // test just loop through which motor is on every 2 seconds
-  // static unsigned long lastSendMs = 0;
-  // const unsigned long nowMs = millis();
-  // if (nowMs - lastSendMs >= 2000) {
-  //   lastSendMs = nowMs;
-  //   motor_update_t motorUpdate{};
-  //   motorUpdate.motor_states[(nowMs / 2000) % 4] = 1;
-  //   updateMotorStates(motorUpdate);
-  // }
-  displayMACAddress();
-  Serial.print("init result: ");
-  Serial.println(initResult);
-  motor_update_t mtest;
-  mtest.motor_states[0] = HIGH;
-  mtest.motor_states[1] = LOW;
-  mtest.motor_states[2] = LOW;
-  mtest.motor_states[3] = LOW;
-  updateMotorStates(mtest);
-  Serial.println("Motor states updated");
-  delay(1000);
+  // IMU test mode: keep requesting the top motor, then remap it using the
+  // current wrist quadrant so we can verify orientation tracking.
+  if (millis() - last_imu_get_time >= IMU_SAMPLE_INTERVAL) {
+    last_imu_get_time = millis();
+
+    motor_update_t topMotorCommand{};
+    topMotorCommand.motor_states[0] = HIGH;
+
+    motor_update_t remapped = remapMotors(topMotorCommand);
+    updateMotorStates(remapped);
+
+    Serial.print("IMU pitch: ");
+    Serial.println(getWristPitchDegrees());
+    Serial.print("Motor offset: ");
+    Serial.println(getWristMotorOffset());
+    Serial.print("Remapped motor states: ");
+    for (int i = 0; i < 4; i++) {
+      Serial.print(remapped.motor_states[i]);
+      Serial.print(" ");
+    }
+    Serial.println();
+  }
 }
 
 ///////////////
@@ -114,25 +112,46 @@ int updateMotorStates(motor_update_t motor_update) {
   return 1;
 }
 
-// Returns 0-3 representing which 90-degree quadrant the wrist is in
-uint8_t getWristQuadrant() {
+// Returns the wrist pitch angle in degrees, normalized to 0-360.
+float getWristPitchDegrees() {
   imu_data_t data = get_imu_data();
   
-  // Convert accelerometer to roll angle (-180 to 180 degrees)
-  float roll = atan2(data.ay, data.az) * 180.0 / M_PI;
+  // Convert accelerometer to pitch angle (-180 to 180 degrees).
+  // This uses rotation around the IMU Y axis.
+  float pitch = atan2(-data.ax, data.az) * 180.0 / M_PI;
   
   // Shift to 0-360
-  if (roll < 0) roll += 360.0;
-  
-  // Quantize into 4 quadrants
-  return (uint8_t)(roll / 90.0) % 4;
+  if (pitch < 0) pitch += 360.0;
+
+  return pitch;
 }
 
-// Remap motor update based on wrist rotation
+// Map the measured pitch bands to a single motor offset.
+// These thresholds are tuned to the angles observed on the bench and avoid
+// splitting the output across two motors.
+uint8_t getWristMotorOffset() {
+  float pitch = getWristPitchDegrees();
+
+  if (pitch >= 337.5 || pitch < 20.0) {
+    return 0; // top
+  }
+  if (pitch < 155.0) {
+    return 1; // right
+  }
+  if (pitch < 292.5) {
+    return 2; // bottom
+  }
+  return 3; // left
+}
+
+// Remap motor update based on wrist rotation.
+// The band only has four motor outputs, so this uses measured pitch bands to
+// select a single physical motor per orientation.
 motor_update_t remapMotors(motor_update_t received) {
   motor_update_t remapped{};
-  uint8_t offset = getWristQuadrant();
-  
+
+  uint8_t offset = getWristMotorOffset();
+
   for (int i = 0; i < 4; i++) {
     remapped.motor_states[(i + offset) % 4] = received.motor_states[i];
   }
