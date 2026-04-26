@@ -10,17 +10,16 @@
 // GLOBALS
 ///////////////
 esp_now_peer_info_t peerInfo;
-//uint8_t bandAddress[] = {0x34, 0xCD, 0xB0, 0x53, 0x36, 0x28}; // band MAC address
-uint8_t bandAddress[] = {0xE8, 0xF6, 0x0A, 0x17, 0x00, 0xC0}; // seeed band MAC address with dot on top of chip
+uint8_t bandAddress[] = {0xE8, 0xF6, 0x0A, 0x16, 0xCC, 0xA0}; // bb band address
+//uint8_t bandAddress[] = {0xE8, 0xF6, 0x0A, 0x17, 0x00, 0xC0}; // seeed band MAC address with dot on top of chip
 
 
 uint16_t successful_sends = 0;
 uint16_t failed_sends = 0;
 
 // Testing: set to 1 to ignore Serial and send dummy motor updates over ESP-NOW.
-#define DONGLE_DUMMY_MODE 1
+#define DONGLE_DUMMY_MODE 0
 #define DONGLE_DUMMY_PERIOD_MS 2000
-#define DONGLE_DUMMY_MOTOR_COUNT 4
 
 int initResult;
 
@@ -61,6 +60,7 @@ void loop(){
   motor_update_t motorUpdate{};
   motorUpdate.motor_states[step % kMotorCount] = 1;
   step++;
+  displayMACAddress();
   Serial.print("Sending dummy motor update: ");
   for (int i = 0; i < kMotorCount; i++) {
     Serial.print(motorUpdate.motor_states[i]);

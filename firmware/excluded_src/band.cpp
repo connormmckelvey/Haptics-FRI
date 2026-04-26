@@ -12,6 +12,9 @@
 #define IMU_CALIBRATION_INTERVAL 1000000 // in milliseconds
 #define SCL_PIN 7
 #define SDA_PIN 6
+// Set to 1 to locally drive motors from IMU test code in loop().
+// Default 0 keeps production behavior: ESP-NOW commands -> remap -> motors.
+#define BAND_IMU_TEST_MODE 0
 
 MPU6050 imu;
 esp_now_peer_info_t peerInfo;
@@ -38,10 +41,8 @@ void calibrateIMU();
 imu_data_t get_imu_data();
 int initESPNOW(uint8_t channel);
 void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
-void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void displayMACAddress();
 void displayChannel();
-int check_disconnect();
 
 
 ///////////////
@@ -60,11 +61,7 @@ void setup() {
 }
 
 void loop() {
-  if (millis() - last_imu_calibration_time >= IMU_CALIBRATION_INTERVAL) {
-    last_imu_calibration_time = millis();
-    calibrateIMU();
-  }
-
+#if BAND_IMU_TEST_MODE
   // IMU test mode: keep requesting the top motor, then remap it using the
   // current wrist quadrant so we can verify orientation tracking.
   if (millis() - last_imu_get_time >= IMU_SAMPLE_INTERVAL) {
@@ -87,6 +84,7 @@ void loop() {
     }
     Serial.println();
   }
+#endif
 }
 
 ///////////////
@@ -229,10 +227,3 @@ void displayChannel(){
   Serial.print("Actual channel: ");
   Serial.println(primaryChan);
 }
-
-// send IMU data through ESPNOW
-// receive motor control commands through ESPNOW
-// toggle motors correctly
-
-// check if dongle exists, try to reconnect if it doesn't, return 1 disconnected, 0 if connected
-int check_disconnect(){return 0;}
