@@ -1,11 +1,7 @@
 #include <stdint.h>
 
 typedef struct t_motor_update {
-  uint8_t motor_states[4]; // 0 for off, 1 for on, max 12 motors being controlled
-  uint8_t top = motor_states[0];
-  uint8_t left = motor_states[1];
-  uint8_t bottom = motor_states[2];
-  uint8_t right = motor_states[3];
+  uint8_t motor_states[4]; // 0=top, 1=right, 2=bottom, 3=left
 } motor_update_t;
 
 typedef struct t_imu_data {
