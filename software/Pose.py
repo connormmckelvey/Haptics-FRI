@@ -171,14 +171,15 @@ def main():
             rw = get_keypoint(keypoints, w, h, RIGHT_WRIST)
 
             # Pick wrist with higher confidence
-            if lw[2] >= rw[2]:
-                wx, wy, wconf = lw
-                current_elbow, side_label = le, "Left"
-                current_angle = calculate_arm_angle(ls, le, lw)
-            else:
-                wx, wy, wconf = rw
-                current_elbow, side_label = re, "Right"
-                current_angle = calculate_arm_angle(rs, re, rw)
+            
+            #if lw[2] >= rw[2]:
+            #    wx, wy, wconf = lw
+            #    current_elbow, side_label = le, "Left"
+            #    current_angle = calculate_arm_angle(ls, le, lw)
+            #else:
+            wx, wy, wconf = rw
+            current_elbow, side_label = re, "Right"
+            current_angle = calculate_arm_angle(rs, re, rw)
 
             # ------------------------------------------
             # Directional exit detection (zone mode)
