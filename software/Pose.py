@@ -24,38 +24,74 @@ BAUD_RATE = 115200
 MOTORS_OFF = bytes([0, 0, 0, 0])
 
 # -----------------------------
-# ZONE — single rectangle, normalized 0.0-1.0
-# Edit these four values to reposition/resize the box.
-# Or use the Zone Designer widget and copy the x/y/x2/y2 values.
+# ZONES — paste the output from the Zone Designer here.
+# Supports both "rect" and "polygon" types.
+# Coords are normalized 0.0–1.0 so they scale to any resolution.
 # -----------------------------
-ZONE = {
-    "x":  0.25,   # left edge
-    "y":  0.15,   # top edge
-    "x2": 0.75,   # right edge
-    "y2": 0.85,   # bottom edge
-}
+ZONES = [
+    {  # Zone 1 — polygon
+        "type": "polygon",
+        "pts": [(0.4070, 0.2399), (0.5000, 0.1541), (0.5676, 0.1402), (0.6190, 0.1624), (0.7578, 0.3672), (0.7703, 0.5000), (0.7547, 0.5000), (0.7375, 0.5637), (0.6377, 0.6439), (0.5000, 0.6605), (0.5000, 0.6827), (0.4366, 0.7076), (0.3820, 0.6965), (0.3243, 0.6024), (0.3025, 0.4446), (0.3368, 0.3284), (0.3649, 0.2758), (0.4007, 0.2675), (0.4194, 0.2177)],
+    },
+]
 
 # Set to True to use zone-based detection, False for original angle mode
 USE_ZONE_MODE = True
+
+# -----------------------------
+# Zone geometry helpers
+# -----------------------------
+def _point_in_zone(nx, ny, zone):
+    """Returns True if normalized point (nx, ny) is inside a single zone."""
+    if zone["type"] == "rect":
+        return zone["x"] <= nx <= zone["x2"] and zone["y"] <= ny <= zone["y2"]
+    # Polygon — ray-casting algorithm
+    pts = zone["pts"]
+    inside = False
+    j = len(pts) - 1
+    for i in range(len(pts)):
+        xi, yi = pts[i]
+        xj, yj = pts[j]
+        if ((yi > ny) != (yj > ny)) and (nx < (xj - xi) * (ny - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+def _zone_bounding_box(zone):
+    """Returns (x, y, x2, y2) normalized bounding box for any zone type."""
+    if zone["type"] == "rect":
+        return zone["x"], zone["y"], zone["x2"], zone["y2"]
+    xs = [p[0] for p in zone["pts"]]
+    ys = [p[1] for p in zone["pts"]]
+    return min(xs), min(ys), max(xs), max(ys)
 
 # -----------------------------
 # Directional exit detection
 # -----------------------------
 def get_exit_directions(wx_px, wy_px, frame_w, frame_h):
     """
-    Returns a list of all edges the wrist has exited from.
-    Diagonal exit (e.g. upper-left corner) returns two directions.
-    Returns a list containing any of: "top", "right", "bottom", "left"
-    Returns empty list if wrist is inside the zone.
+    Returns a list of directions the wrist has exited relative to the combined
+    bounding box of all zones. Returns empty list if inside any zone.
+    Supports both rect and polygon zones.
     """
     nx = wx_px / frame_w
     ny = wy_px / frame_h
 
+    # If the wrist is inside ANY zone, it is in range — no haptic needed
+    if any(_point_in_zone(nx, ny, z) for z in ZONES):
+        return []
+
+    # Wrist is outside all zones — determine exit direction from combined bbox
+    all_x1 = min(_zone_bounding_box(z)[0] for z in ZONES)
+    all_y1 = min(_zone_bounding_box(z)[1] for z in ZONES)
+    all_x2 = max(_zone_bounding_box(z)[2] for z in ZONES)
+    all_y2 = max(_zone_bounding_box(z)[3] for z in ZONES)
+
     directions = []
-    if ny < ZONE["y"]:   directions.append("top")
-    if ny > ZONE["y2"]:  directions.append("bottom")
-    if nx < ZONE["x"]:   directions.append("left")
-    if nx > ZONE["x2"]:  directions.append("right")
+    if ny < all_y1: directions.append("top")
+    if ny > all_y2: directions.append("bottom")
+    if nx < all_x1: directions.append("left")
+    if nx > all_x2: directions.append("right")
     return directions
 
 def directions_to_motor_packet(directions):
@@ -67,28 +103,27 @@ def directions_to_motor_packet(directions):
     return bytes([top, right, bottom, left])
 
 def draw_zone(frame, frame_w, frame_h, directions):
-    """Draw the zone rectangle, highlighting all active exit edges."""
-    x1 = int(ZONE["x"]  * frame_w)
-    y1 = int(ZONE["y"]  * frame_h)
-    x2 = int(ZONE["x2"] * frame_w)
-    y2 = int(ZONE["y2"] * frame_h)
-
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 200, 200), 1)
-
-    # Highlight every active exit edge in red
-    t = 3
-    if "top"    in directions: cv2.line(frame, (x1, y1), (x2, y1), (0, 0, 255), t)
-    if "bottom" in directions: cv2.line(frame, (x1, y2), (x2, y2), (0, 0, 255), t)
-    if "left"   in directions: cv2.line(frame, (x1, y1), (x1, y2), (0, 0, 255), t)
-    if "right"  in directions: cv2.line(frame, (x2, y1), (x2, y2), (0, 0, 255), t)
-
-    mid_x = (x1 + x2) // 2
-    mid_y = (y1 + y2) // 2
-    label_color = (180, 180, 180)
-    cv2.putText(frame, "TOP",    (mid_x - 15, y1 - 6),  cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
-    cv2.putText(frame, "BOTTOM", (mid_x - 25, y2 + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
-    cv2.putText(frame, "LEFT",   (x1 - 42, mid_y),      cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
-    cv2.putText(frame, "RIGHT",  (x2 + 6,  mid_y),      cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
+    """Draw all zones onto the frame, highlighting exit edges on rects."""
+    for zone in ZONES:
+        if zone["type"] == "rect":
+            x1 = int(zone["x"]  * frame_w)
+            y1 = int(zone["y"]  * frame_h)
+            x2 = int(zone["x2"] * frame_w)
+            y2 = int(zone["y2"] * frame_h)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 200, 200), 1)
+            t = 3
+            if "top"    in directions: cv2.line(frame, (x1, y1), (x2, y1), (0, 0, 255), t)
+            if "bottom" in directions: cv2.line(frame, (x1, y2), (x2, y2), (0, 0, 255), t)
+            if "left"   in directions: cv2.line(frame, (x1, y1), (x1, y2), (0, 0, 255), t)
+            if "right"  in directions: cv2.line(frame, (x2, y1), (x2, y2), (0, 0, 255), t)
+        else:
+            # Polygon zone
+            pts_px = np.array(
+                [(int(p[0] * frame_w), int(p[1] * frame_h)) for p in zone["pts"]],
+                dtype=np.int32
+            )
+            color = (0, 0, 255) if directions else (0, 200, 200)
+            cv2.polylines(frame, [pts_px], isClosed=True, color=color, thickness=2)
 
 # -----------------------------
 # Serial helpers
@@ -171,7 +206,6 @@ def main():
             rw = get_keypoint(keypoints, w, h, RIGHT_WRIST)
 
             # Pick wrist with higher confidence
-            
             #if lw[2] >= rw[2]:
             #    wx, wy, wconf = lw
             #    current_elbow, side_label = le, "Left"

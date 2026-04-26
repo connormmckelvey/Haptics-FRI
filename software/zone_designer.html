@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tactus Zone Designer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f12;
+    --surface: #13161b;
+    --surface2: #1a1e26;
+    --border: #252a35;
+    --accent: #00e5ff;
+    --accent2: #ff6b35;
+    --accent3: #7fff6b;
+    --accent4: #c084fc;
+    --text: #e8ecf4;
+    --muted: #5a6278;
+    --snap-color: #7fff6b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+  }
+
+  header .badge {
+    font-size: 0.65rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .workspace {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    height: calc(100vh - 49px);
+  }
+
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-section h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .tool-group { display: flex; flex-direction: column; gap: 5px; }
+
+  .tool-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    padding: 8px 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .tool-btn:hover { border-color: var(--muted); }
+  .tool-btn.active-rect  { border-color: var(--accent);  color: var(--accent);  background: rgba(0,229,255,0.06); }
+  .tool-btn.active-poly  { border-color: var(--accent2); color: var(--accent2); background: rgba(255,107,53,0.06); }
+  .tool-btn.active-draw  { border-color: var(--accent4); color: var(--accent4); background: rgba(192,132,252,0.06); }
+
+  .tool-icon { font-size: 0.95rem; width: 16px; text-align: center; }
+
+  .hint {
+    font-size: 0.65rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-top: 9px;
+  }
+
+  .snap-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .snap-label { font-size: 0.72rem; color: var(--text); }
+
+  .toggle {
+    position: relative;
+    width: 36px; height: 20px;
+    cursor: pointer;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute; inset: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    transition: background 0.2s;
+  }
+  .toggle input:checked ~ .toggle-track { background: var(--snap-color); border-color: var(--snap-color); }
+  .toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 12px; height: 12px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); background: #000; }
+
+  .snap-threshold-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .snap-threshold-row label { font-size: 0.65rem; color: var(--muted); flex-shrink: 0; }
+  .snap-threshold-row input[type=range] { flex: 1; accent-color: var(--snap-color); cursor: pointer; }
+  .snap-threshold-row span { font-size: 0.65rem; color: var(--snap-color); min-width: 28px; text-align: right; }
+
+  .zone-list { display: flex; flex-direction: column; gap: 5px; }
+
+  .zone-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 9px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    transition: border-color 0.15s;
+  }
+  .zone-item:hover { border-color: var(--muted); }
+  .zone-item-left { display: flex; align-items: center; gap: 7px; }
+  .zone-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .zone-item .del-btn {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 0.85rem; padding: 2px 4px;
+    border-radius: 3px; font-family: monospace; transition: color 0.15s;
+  }
+  .zone-item .del-btn:hover { color: #ff4444; }
+
+  .empty-hint {
+    color: var(--muted); font-size: 0.7rem;
+    text-align: center; padding: 20px 12px; line-height: 1.8;
+  }
+
+  .canvas-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    min-width: 0;
+  }
+
+  .canvas-toolbar {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    font-size: 0.7rem;
+    color: var(--muted);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  #modeLabel { font-weight: 700; }
+
+  .finish-poly-btn {
+    background: var(--accent2); color: #000;
+    border: none; font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem; font-weight: 700;
+    padding: 4px 9px; border-radius: 3px; cursor: pointer;
+    display: none;
+  }
+  .finish-poly-btn.visible { display: inline-block; }
+
+  .simplify-row { display: flex; align-items: center; gap: 6px; display: none; }
+  .simplify-row.visible { display: flex; }
+  .simplify-row label { font-size: 0.63rem; color: var(--muted); }
+  .simplify-row input[type=range] { width: 70px; accent-color: var(--accent4); cursor: pointer; }
+  .simplify-row span { font-size: 0.63rem; color: var(--accent4); min-width: 22px; }
+
+  .clear-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+    padding: 4px 9px; border-radius: 3px; cursor: pointer; transition: all 0.15s;
+  }
+  .clear-btn:hover { border-color: #ff4444; color: #ff4444; }
+
+  .coord-display {
+    margin-left: auto; font-size: 0.65rem; color: var(--muted);
+    min-width: 150px; text-align: right;
+  }
+
+  .snap-indicator {
+    font-size: 0.63rem; padding: 2px 7px; border-radius: 3px;
+    background: rgba(127,255,107,0.12); color: var(--snap-color);
+    border: 1px solid rgba(127,255,107,0.3);
+    display: none;
+  }
+  .snap-indicator.visible { display: inline-block; }
+
+  .canvas-wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 20px; overflow: hidden;
+  }
+
+  canvas {
+    background: #111418;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  .output-panel {
+    width: 290px; min-width: 290px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+  }
+
+  .output-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .output-header h2 {
+    font-family: 'Syne', sans-serif; font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted);
+  }
+  .copy-btn {
+    background: var(--accent); color: #000; border: none;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; font-weight: 700;
+    padding: 4px 9px; border-radius: 3px; cursor: pointer;
+    letter-spacing: 0.05em; transition: opacity 0.15s;
+  }
+  .copy-btn:hover { opacity: 0.85; }
+  .copy-btn.copied { background: var(--accent3); }
+
+  .output-code { flex: 1; overflow-y: auto; padding: 12px; }
+
+  pre {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+    line-height: 1.7; color: #a8b4cc; white-space: pre-wrap; word-break: break-all;
+  }
+
+  .kw  { color: #c084fc; }
+  .str { color: var(--accent3); }
+  .num { color: #fb923c; }
+  .cm  { color: var(--muted); }
+
+  .size-row { display: flex; gap: 5px; align-items: center; }
+  .size-row input[type=number] {
+    width: 64px; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; padding: 5px 7px; border-radius: 3px;
+  }
+  .size-row .x-sep { color: var(--muted); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TACTUS // Zone Designer</h1>
+  <span class="badge">v2.0</span>
+</header>
+
+<div class="workspace">
+
+  <div class="sidebar">
+
+    <div class="sidebar-section">
+      <h2>Draw Tool</h2>
+      <div class="tool-group">
+        <button class="tool-btn active-rect" id="btnRect" onclick="setTool('rect')">
+          <span class="tool-icon">▭</span> Rectangle
+        </button>
+        <button class="tool-btn" id="btnPoly" onclick="setTool('poly')">
+          <span class="tool-icon">⬡</span> Polygon (click)
+        </button>
+        <button class="tool-btn" id="btnDraw" onclick="setTool('draw')">
+          <span class="tool-icon">✏</span> Freehand Draw
+        </button>
+      </div>
+      <div class="hint" id="toolHint">Click and drag to draw a rectangle zone.</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>Snapping</h2>
+      <div class="snap-row">
+        <span class="snap-label">Axis snap</span>
+        <label class="toggle">
+          <input type="checkbox" id="snapToggle" checked onchange="redraw()">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <div class="snap-threshold-row">
+        <label>Radius</label>
+        <input type="range" id="snapRadius" min="4" max="40" value="14" oninput="updateSnapLabel()">
+        <span id="snapRadiusLabel">14px</span>
+      </div>
+      <div class="hint">Points snap to horizontal/vertical alignment with existing edges, vertices, canvas edges and centre lines. Green diamond + guide line shows an active snap.</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>Canvas Size</h2>
+      <div class="size-row">
+        <input id="canvasW" type="number" value="640" min="100" max="1920">
+        <span class="x-sep">×</span>
+        <input id="canvasH" type="number" value="360" min="100" max="1080">
+        <button onclick="resizeCanvas()" class="tool-btn" style="flex:1;justify-content:center;padding:5px 8px;">Apply</button>
+      </div>
+      <div class="hint">Match your camera resolution for accurate zone placement.</div>
+    </div>
+
+    <div class="sidebar-section" style="flex:1;">
+      <h2>Zones <span style="color:var(--accent);margin-left:6px;" id="zoneCount">0</span></h2>
+      <div class="zone-list" id="zoneList">
+        <div class="empty-hint">No zones yet.<br>Draw on the canvas to add zones.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="canvas-area">
+    <div class="canvas-toolbar">
+      <span id="modeLabel" style="color:var(--accent);">RECT MODE</span>
+      <button class="finish-poly-btn" id="finishPolyBtn" onclick="finishPolygon()">✓ Close Polygon</button>
+      <div class="simplify-row" id="simplifyRow">
+        <label>Simplify</label>
+        <input type="range" id="simplifySlider" min="1" max="30" value="6" oninput="updateSimplifyLabel()">
+        <span id="simplifyLabel">6</span>
+      </div>
+      <span class="snap-indicator" id="snapIndicator">⊕ SNAP</span>
+      <button class="clear-btn" onclick="clearAll()">Clear All</button>
+      <span class="coord-display" id="coordDisplay">x: — y: —</span>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="640" height="360"></canvas>
+    </div>
+  </div>
+
+  <div class="output-panel">
+    <div class="output-header">
+      <h2>Python Output</h2>
+      <button class="copy-btn" id="copyBtn" onclick="copyCode()">Copy</button>
+    </div>
+    <div class="output-code">
+      <pre id="codeOutput"><span class="cm"># Draw zones on the canvas
+# to generate code here.</span></pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let tool = 'rect';
+let zones = [];
+let drawing = false;
+let startX, startY;
+let currentRect = null;
+let polyPoints = [];
+let freePoints = [];
+let mouseX = 0, mouseY = 0;
+let snappedX = 0, snappedY = 0;
+let activeSnap = { x: false, y: false };
+
+const ZONE_COLORS = [
+  { fill: 'rgba(0,229,255,0.13)',   stroke: '#00e5ff' },
+  { fill: 'rgba(255,107,53,0.13)',  stroke: '#ff6b35' },
+  { fill: 'rgba(127,255,107,0.13)', stroke: '#7fff6b' },
+  { fill: 'rgba(200,100,255,0.13)', stroke: '#c864ff' },
+  { fill: 'rgba(255,200,50,0.13)',  stroke: '#ffc832' },
+  { fill: 'rgba(255,80,120,0.13)',  stroke: '#ff5078' },
+];
+function getColor(i) { return ZONE_COLORS[i % ZONE_COLORS.length]; }
+
+// ── Snapping ──────────────────────────────────────────────────
+
+function snapEnabled() { return document.getElementById('snapToggle').checked; }
+function snapRadius()  { return parseInt(document.getElementById('snapRadius').value); }
+function updateSnapLabel() {
+  document.getElementById('snapRadiusLabel').textContent = snapRadius() + 'px';
+}
+
+function getSnapTargets() {
+  const w = canvas.width, h = canvas.height;
+  const xs = new Set([0, w * 0.5, w]);
+  const ys = new Set([0, h * 0.5, h]);
+  zones.forEach(z => {
+    if (z.type === 'rect') {
+      xs.add(z.x * w); xs.add(z.x2 * w);
+      ys.add(z.y * h); ys.add(z.y2 * h);
+    } else {
+      z.pts.forEach(([nx, ny]) => { xs.add(nx * w); ys.add(ny * h); });
+    }
+  });
+  // In-progress polygon points are also snap targets
+  polyPoints.forEach(p => { xs.add(p.x); ys.add(p.y); });
+  return { xs: [...xs], ys: [...ys] };
+}
+
+function applySnap(rx, ry) {
+  if (!snapEnabled()) return { x: rx, y: ry, snapX: false, snapY: false };
+  const r = snapRadius();
+  const { xs, ys } = getSnapTargets();
+  let x = rx, y = ry, snapX = false, snapY = false;
+
+  let bestDx = r + 1;
+  xs.forEach(tx => { const d = Math.abs(rx - tx); if (d < bestDx) { bestDx = d; x = tx; snapX = true; } });
+  if (bestDx > r) { x = rx; snapX = false; }
+
+  let bestDy = r + 1;
+  ys.forEach(ty => { const d = Math.abs(ry - ty); if (d < bestDy) { bestDy = d; y = ty; snapY = true; } });
+  if (bestDy > r) { y = ry; snapY = false; }
+
+  return { x, y, snapX, snapY };
+}
+
+// ── Tool selection ────────────────────────────────────────────
+
+const HINTS = {
+  rect: 'Click and drag to draw a rectangle. Hold Shift for a square. Snap aligns to existing edges.',
+  poly: 'Click to place points one by one. Hold Shift to lock horizontal/vertical from the last point. Click near the first point or press Close Polygon to finish.',
+  draw: 'Hold and drag to draw a freehand shape — release to auto-close and simplify into a polygon. Use the Simplify slider to control how many vertices are kept.',
+};
+
+function setTool(t) {
+  if (tool === 'poly' && polyPoints.length > 0) polyPoints = [];
+  if (tool === 'draw') { freePoints = []; drawing = false; }
+  tool = t;
+  document.getElementById('btnRect').className = 'tool-btn' + (t==='rect'?' active-rect':'');
+  document.getElementById('btnPoly').className = 'tool-btn' + (t==='poly'?' active-poly':'');
+  document.getElementById('btnDraw').className = 'tool-btn' + (t==='draw'?' active-draw':'');
+  const colors = { rect:'var(--accent)', poly:'var(--accent2)', draw:'var(--accent4)' };
+  const labels = { rect:'RECT MODE', poly:'POLYGON MODE', draw:'FREEHAND MODE' };
+  document.getElementById('modeLabel').textContent = labels[t];
+  document.getElementById('modeLabel').style.color = colors[t];
+  document.getElementById('toolHint').textContent = HINTS[t];
+  document.getElementById('finishPolyBtn').classList.remove('visible');
+  document.getElementById('simplifyRow').classList.toggle('visible', t === 'draw');
+  redraw();
+}
+
+function updateSimplifyLabel() {
+  document.getElementById('simplifyLabel').textContent = document.getElementById('simplifySlider').value;
+}
+
+// ── Canvas resize ──────────────────────────────────────────────
+
+function resizeCanvas() {
+  const w = parseInt(document.getElementById('canvasW').value);
+  const h = parseInt(document.getElementById('canvasH').value);
+  if (w > 0 && h > 0) {
+    canvas.width = w; canvas.height = h;
+    zones = []; polyPoints = []; freePoints = []; drawing = false;
+    updateZoneList(); updateCode(); redraw();
+  }
+}
+
+// ── Coordinate helper ─────────────────────────────────────────
+
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (canvas.width  / r.width),
+    y: (e.clientY - r.top)  * (canvas.height / r.height),
+  };
+}
+
+// ── Mouse events ──────────────────────────────────────────────
+
+canvas.addEventListener('mousedown', e => {
+  const raw = getPos(e);
+  const { x, y, snapX, snapY } = applySnap(raw.x, raw.y);
+  snappedX = x; snappedY = y; activeSnap = { x: snapX, y: snapY };
+
+  if (tool === 'rect') {
+    drawing = true; startX = x; startY = y; currentRect = null;
+
+  } else if (tool === 'poly') {
+    let px = x, py = y;
+    if (e.shiftKey && polyPoints.length > 0) {
+      const last = polyPoints[polyPoints.length - 1];
+      if (Math.abs(x - last.x) > Math.abs(y - last.y)) py = last.y; else px = last.x;
+    }
+    if (polyPoints.length >= 3 && Math.hypot(x - polyPoints[0].x, y - polyPoints[0].y) < 14) {
+      finishPolygon(); return;
+    }
+    polyPoints.push({ x: px, y: py });
+    document.getElementById('finishPolyBtn').classList.toggle('visible', polyPoints.length >= 3);
+    redraw();
+
+  } else if (tool === 'draw') {
+    drawing = true; freePoints = [{ x, y }];
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const raw = getPos(e);
+  mouseX = raw.x; mouseY = raw.y;
+  const { x, y, snapX, snapY } = applySnap(raw.x, raw.y);
+  snappedX = x; snappedY = y; activeSnap = { x: snapX, y: snapY };
+
+  document.getElementById('coordDisplay').textContent =
+    `x: ${(x/canvas.width).toFixed(4)}  y: ${(y/canvas.height).toFixed(4)}`;
+
+  const anySnap = snapX || snapY;
+  const ind = document.getElementById('snapIndicator');
+  ind.textContent = (snapX && snapY) ? '⊕ SNAP X+Y' : snapX ? '→ SNAP X' : '↕ SNAP Y';
+  ind.classList.toggle('visible', anySnap && snapEnabled());
+
+  if (tool === 'rect' && drawing) {
+    let sx = x, sy = y;
+    if (e.shiftKey) {
+      const s = Math.min(Math.abs(x - startX), Math.abs(y - startY));
+      sx = startX + s * Math.sign(x - startX);
+      sy = startY + s * Math.sign(y - startY);
+    }
+    currentRect = { x: Math.min(startX,sx), y: Math.min(startY,sy),
+                    x2: Math.max(startX,sx), y2: Math.max(startY,sy) };
+  }
+
+  if (tool === 'draw' && drawing && freePoints.length > 0) {
+    const last = freePoints[freePoints.length - 1];
+    if (Math.hypot(x - last.x, y - last.y) > 3) freePoints.push({ x, y });
+  }
+
+  redraw();
+});
+
+canvas.addEventListener('mouseup', e => {
+  const raw = getPos(e);
+  const { x, y } = applySnap(raw.x, raw.y);
+
+  if (tool === 'rect' && drawing) {
+    drawing = false;
+    if (currentRect && (currentRect.x2 - currentRect.x) > 4 && (currentRect.y2 - currentRect.y) > 4) {
+      const w = canvas.width, h = canvas.height;
+      zones.push({ type:'rect', x:currentRect.x/w, y:currentRect.y/h,
+                   x2:currentRect.x2/w, y2:currentRect.y2/h });
+      updateZoneList(); updateCode();
+    }
+    currentRect = null; redraw();
+
+  } else if (tool === 'draw' && drawing) {
+    drawing = false;
+    commitFreehand();
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  document.getElementById('coordDisplay').textContent = 'x: — y: —';
+  document.getElementById('snapIndicator').classList.remove('visible');
+  if (tool === 'draw' && drawing) { drawing = false; commitFreehand(); }
+});
+
+// ── Freehand commit ───────────────────────────────────────────
+
+function commitFreehand() {
+  if (freePoints.length >= 4) {
+    const eps = parseInt(document.getElementById('simplifySlider').value);
+    const simplified = ramerDouglasPeucker(freePoints, eps);
+    if (simplified.length >= 3) {
+      const w = canvas.width, h = canvas.height;
+      zones.push({ type:'polygon', pts: simplified.map(p => [p.x/w, p.y/h]) });
+      updateZoneList(); updateCode();
+    }
+  }
+  freePoints = []; redraw();
+}
+
+// ── Polygon finish ────────────────────────────────────────────
+
+function finishPolygon() {
+  if (polyPoints.length < 3) return;
+  const w = canvas.width, h = canvas.height;
+  zones.push({ type:'polygon', pts: polyPoints.map(p => [p.x/w, p.y/h]) });
+  polyPoints = [];
+  document.getElementById('finishPolyBtn').classList.remove('visible');
+  updateZoneList(); updateCode(); redraw();
+}
+
+// ── RDP simplification ────────────────────────────────────────
+
+function rdpDist(p, a, b) {
+  const dx = b.x-a.x, dy = b.y-a.y;
+  if (!dx && !dy) return Math.hypot(p.x-a.x, p.y-a.y);
+  const t = ((p.x-a.x)*dx + (p.y-a.y)*dy) / (dx*dx+dy*dy);
+  return Math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy));
+}
+function ramerDouglasPeucker(pts, eps) {
+  if (pts.length <= 2) return pts;
+  let maxD = 0, maxI = 0;
+  for (let i = 1; i < pts.length-1; i++) {
+    const d = rdpDist(pts[i], pts[0], pts[pts.length-1]);
+    if (d > maxD) { maxD = d; maxI = i; }
+  }
+  if (maxD > eps) {
+    return [...ramerDouglasPeucker(pts.slice(0, maxI+1), eps).slice(0,-1),
+            ...ramerDouglasPeucker(pts.slice(maxI), eps)];
+  }
+  return [pts[0], pts[pts.length-1]];
+}
+
+// ── Clear / delete ────────────────────────────────────────────
+
+function clearAll() {
+  zones = []; polyPoints = []; freePoints = []; currentRect = null; drawing = false;
+  document.getElementById('finishPolyBtn').classList.remove('visible');
+  updateZoneList(); updateCode(); redraw();
+}
+function deleteZone(i) { zones.splice(i,1); updateZoneList(); updateCode(); redraw(); }
+
+// ── Redraw ────────────────────────────────────────────────────
+
+function redraw() {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  // Grid
+  ctx.strokeStyle='rgba(255,255,255,0.035)'; ctx.lineWidth=1;
+  const sx=Math.round(w/10), sy=Math.round(h/6);
+  for(let x=sx;x<w;x+=sx){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  for(let y=sy;y<h;y+=sy){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  // Centre lines
+  ctx.strokeStyle='rgba(255,255,255,0.07)';
+  ctx.beginPath();ctx.moveTo(w/2,0);ctx.lineTo(w/2,h);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,h/2);ctx.lineTo(w,h/2);ctx.stroke();
+
+  // Snap guide lines
+  if (snapEnabled() && (activeSnap.x || activeSnap.y)) {
+    ctx.save(); ctx.setLineDash([3,5]); ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(127,255,107,0.5)';
+    if (activeSnap.x){ctx.beginPath();ctx.moveTo(snappedX,0);ctx.lineTo(snappedX,h);ctx.stroke();}
+    if (activeSnap.y){ctx.beginPath();ctx.moveTo(0,snappedY);ctx.lineTo(w,snappedY);ctx.stroke();}
+    ctx.restore();
+  }
+
+  // Crosshair
+  ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1;
+  ctx.setLineDash([4,6]);
+  ctx.beginPath();ctx.moveTo(snappedX,0);ctx.lineTo(snappedX,h);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,snappedY);ctx.lineTo(w,snappedY);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Committed zones
+  zones.forEach((z,i)=>{
+    const c=getColor(i); ctx.lineWidth=2;
+    if(z.type==='rect'){
+      const px=z.x*w,py=z.y*h,pw=(z.x2-z.x)*w,ph=(z.y2-z.y)*h;
+      ctx.fillStyle=c.fill; ctx.fillRect(px,py,pw,ph);
+      ctx.strokeStyle=c.stroke; ctx.strokeRect(px,py,pw,ph);
+      ctx.fillStyle=c.stroke;
+      ctx.font=`bold 10px 'JetBrains Mono',monospace`;
+      ctx.fillText(`Z${i+1} rect`,px+5,py+14);
+    } else {
+      const pts=z.pts.map(([nx,ny])=>[nx*w,ny*h]);
+      ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+      pts.slice(1).forEach(([px,py])=>ctx.lineTo(px,py));
+      ctx.closePath();
+      ctx.fillStyle=c.fill; ctx.fill();
+      ctx.strokeStyle=c.stroke; ctx.stroke();
+      pts.forEach(([px,py])=>{
+        ctx.fillStyle=c.stroke;
+        ctx.beginPath(); ctx.arc(px,py,3,0,Math.PI*2); ctx.fill();
+      });
+      ctx.fillStyle=c.stroke;
+      ctx.font=`bold 10px 'JetBrains Mono',monospace`;
+      ctx.fillText(`Z${i+1} poly`,pts[0][0]+5,pts[0][1]-7);
+    }
+  });
+
+  // In-progress rect
+  if(currentRect){
+    const c=getColor(zones.length);
+    ctx.fillStyle=c.fill;
+    ctx.fillRect(currentRect.x,currentRect.y,currentRect.x2-currentRect.x,currentRect.y2-currentRect.y);
+    ctx.strokeStyle=c.stroke; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+    ctx.strokeRect(currentRect.x,currentRect.y,currentRect.x2-currentRect.x,currentRect.y2-currentRect.y);
+    ctx.setLineDash([]);
+    // Size label
+    const pw=((currentRect.x2-currentRect.x)/w*100).toFixed(1);
+    const ph=((currentRect.y2-currentRect.y)/h*100).toFixed(1);
+    ctx.fillStyle=c.stroke; ctx.font=`10px 'JetBrains Mono',monospace`;
+    const cx=currentRect.x+(currentRect.x2-currentRect.x)/2;
+    const cy=currentRect.y+(currentRect.y2-currentRect.y)/2;
+    ctx.fillText(`${pw}% × ${ph}%`,cx-28,cy+4);
+  }
+
+  // In-progress polygon
+  if(polyPoints.length>0){
+    const c=getColor(zones.length);
+    ctx.strokeStyle=c.stroke; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(polyPoints[0].x,polyPoints[0].y);
+    polyPoints.forEach(p=>ctx.lineTo(p.x,p.y));
+    ctx.lineTo(snappedX,snappedY);
+    ctx.stroke(); ctx.setLineDash([]);
+    // Close-snap ring on first point
+    if(polyPoints.length>=3){
+      const dist=Math.hypot(mouseX-polyPoints[0].x,mouseY-polyPoints[0].y);
+      ctx.strokeStyle=dist<14?'#7fff6b':c.stroke; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(polyPoints[0].x,polyPoints[0].y,9,0,Math.PI*2); ctx.stroke();
+    }
+    polyPoints.forEach((p,j)=>{
+      ctx.fillStyle=j===0?c.stroke:'white';
+      ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fill();
+    });
+  }
+
+  // In-progress freehand
+  if(freePoints.length>1){
+    const c=getColor(zones.length);
+    ctx.strokeStyle=c.stroke; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(freePoints[0].x,freePoints[0].y);
+    freePoints.forEach(p=>ctx.lineTo(p.x,p.y));
+    ctx.stroke();
+    // Closing preview
+    ctx.strokeStyle='rgba(192,132,252,0.35)'; ctx.lineWidth=1.5; ctx.setLineDash([4,5]);
+    ctx.beginPath();
+    ctx.moveTo(freePoints[freePoints.length-1].x,freePoints[freePoints.length-1].y);
+    ctx.lineTo(freePoints[0].x,freePoints[0].y);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=c.stroke;
+    ctx.beginPath(); ctx.arc(freePoints[0].x,freePoints[0].y,5,0,Math.PI*2); ctx.fill();
+  }
+
+  // Snap diamond at cursor
+  if(snapEnabled() && (activeSnap.x || activeSnap.y)){
+    const s=6;
+    ctx.save(); ctx.fillStyle='rgba(127,255,107,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(snappedX,snappedY-s); ctx.lineTo(snappedX+s,snappedY);
+    ctx.lineTo(snappedX,snappedY+s); ctx.lineTo(snappedX-s,snappedY);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+}
+
+// ── Zone list ─────────────────────────────────────────────────
+
+function updateZoneList(){
+  const list=document.getElementById('zoneList');
+  document.getElementById('zoneCount').textContent=zones.length;
+  if(!zones.length){
+    list.innerHTML='<div class="empty-hint">No zones yet.<br>Draw on the canvas to add zones.</div>';
+    return;
+  }
+  list.innerHTML=zones.map((z,i)=>{
+    const c=getColor(i);
+    const label=z.type==='rect'?'rect':`poly (${z.pts.length}pts)`;
+    return `<div class="zone-item">
+      <div class="zone-item-left">
+        <div class="zone-dot" style="background:${c.stroke}"></div>
+        <span>Zone ${i+1} — ${label}</span>
+      </div>
+      <button class="del-btn" onclick="deleteZone(${i})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+// ── Code generation ───────────────────────────────────────────
+
+function buildCode(html){
+  const w=canvas.width, h=canvas.height;
+  if(!zones.length) return null;
+  const lines=[];
+  const cm=(s)=>html?`<span class="cm">${s}</span>`:s;
+  const kw=(s)=>html?`<span class="kw">${s}</span>`:s;
+  const st=(s)=>html?`<span class="str">"${s}"</span>`:`"${s}"`;
+  const nm=(n)=>html?`<span class="num">${n}</span>`:`${n}`;
+
+  lines.push(cm(`# Canvas was ${w}x${h}. Coords are normalized (0.0–1.0) so they`));
+  lines.push(cm(`# scale to any resolution automatically.`));
+  lines.push('');
+  lines.push(`${kw('ZONES')} = [`);
+  zones.forEach((z,i)=>{
+    lines.push(`    {  ${cm(`# Zone ${i+1} — ${z.type}`)}`);
+    if(z.type==='rect'){
+      lines.push(`        ${st('type')}: ${st('rect')},`);
+      lines.push(`        ${st('x')}:  ${nm(z.x.toFixed(4))},  ${st('y')}:  ${nm(z.y.toFixed(4))},`);
+      lines.push(`        ${st('x2')}: ${nm(z.x2.toFixed(4))}, ${st('y2')}: ${nm(z.y2.toFixed(4))},`);
+    } else {
+      lines.push(`        ${st('type')}: ${st('polygon')},`);
+      const pts=z.pts.map(([nx,ny])=>`(${nm(nx.toFixed(4))}, ${nm(ny.toFixed(4))})`).join(', ');
+      lines.push(`        ${st('pts')}: [${pts}],`);
+    }
+    lines.push(`    },`);
+  });
+  lines.push(`]`);
+  return lines.join('\n');
+}
+
+function updateCode(){
+  document.getElementById('codeOutput').innerHTML =
+    buildCode(true) || '<span class="cm"># Draw zones on the canvas\n# to generate code here.</span>';
+}
+
+function copyCode(){
+  const plain=buildCode(false);
+  if(!plain) return;
+  const btn=document.getElementById('copyBtn');
+
+  function onSuccess(){
+    btn.textContent='Copied!'; btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent='Copy'; btn.classList.remove('copied'); },1800);
+  }
+
+  // navigator.clipboard requires a secure context (https or localhost).
+  // When the file is opened directly from disk (file://) we fall back to
+  // the legacy execCommand approach which works in all local contexts.
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(plain).then(onSuccess).catch(()=>fallbackCopy(plain,onSuccess));
+  } else {
+    fallbackCopy(plain, onSuccess);
+  }
+}
+
+function fallbackCopy(text, onSuccess){
+  const ta=document.createElement('textarea');
+  ta.value=text;
+  ta.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try{ document.execCommand('copy'); onSuccess(); }
+  catch(e){ alert('Copy failed — please select the code in the panel and copy manually (Ctrl+A, Ctrl+C).'); }
+  document.body.removeChild(ta);
+}
+
+redraw();
+updateCode();
+</script>
+</body>
+</html>
