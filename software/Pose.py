@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import tensorflow_hub as hub
+import math
+import serial
 
 # -----------------------------
 # Configuration
@@ -10,172 +12,252 @@ MODEL_URL = "https://tfhub.dev/google/movenet/singlepose/lightning/4"
 INPUT_SIZE = 192
 CONF_THRESHOLD = 0.3
 
-# COCO keypoint indices used by MoveNet
-LEFT_WRIST = 9
-RIGHT_WRIST = 10
+LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST = 5, 7, 9
+RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST = 6, 8, 10
+
+STRAIGHT_ARM_THRESHOLD = 160
+
+SERIAL_PORT = "COM5"
+BAUD_RATE = 115200
+
+# Motor packet: [top, right, bottom, left]
+MOTORS_OFF = bytes([0, 0, 0, 0])
 
 # -----------------------------
-# Load MoveNet
+# ZONE — single rectangle, normalized 0.0-1.0
+# Edit these four values to reposition/resize the box.
+# Or use the Zone Designer widget and copy the x/y/x2/y2 values.
+# -----------------------------
+ZONE = {
+    "x":  0.25,   # left edge
+    "y":  0.15,   # top edge
+    "x2": 0.75,   # right edge
+    "y2": 0.85,   # bottom edge
+}
+
+# Set to True to use zone-based detection, False for original angle mode
+USE_ZONE_MODE = True
+
+# -----------------------------
+# Directional exit detection
+# -----------------------------
+def get_exit_directions(wx_px, wy_px, frame_w, frame_h):
+    """
+    Returns a list of all edges the wrist has exited from.
+    Diagonal exit (e.g. upper-left corner) returns two directions.
+    Returns a list containing any of: "top", "right", "bottom", "left"
+    Returns empty list if wrist is inside the zone.
+    """
+    nx = wx_px / frame_w
+    ny = wy_px / frame_h
+
+    directions = []
+    if ny < ZONE["y"]:   directions.append("top")
+    if ny > ZONE["y2"]:  directions.append("bottom")
+    if nx < ZONE["x"]:   directions.append("left")
+    if nx > ZONE["x2"]:  directions.append("right")
+    return directions
+
+def directions_to_motor_packet(directions):
+    """Builds a 4-byte packet [top, right, bottom, left] from a list of directions."""
+    top    = 1 if "top"    in directions else 0
+    right  = 1 if "right"  in directions else 0
+    bottom = 1 if "bottom" in directions else 0
+    left   = 1 if "left"   in directions else 0
+    return bytes([top, right, bottom, left])
+
+def draw_zone(frame, frame_w, frame_h, directions):
+    """Draw the zone rectangle, highlighting all active exit edges."""
+    x1 = int(ZONE["x"]  * frame_w)
+    y1 = int(ZONE["y"]  * frame_h)
+    x2 = int(ZONE["x2"] * frame_w)
+    y2 = int(ZONE["y2"] * frame_h)
+
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 200, 200), 1)
+
+    # Highlight every active exit edge in red
+    t = 3
+    if "top"    in directions: cv2.line(frame, (x1, y1), (x2, y1), (0, 0, 255), t)
+    if "bottom" in directions: cv2.line(frame, (x1, y2), (x2, y2), (0, 0, 255), t)
+    if "left"   in directions: cv2.line(frame, (x1, y1), (x1, y2), (0, 0, 255), t)
+    if "right"  in directions: cv2.line(frame, (x2, y1), (x2, y2), (0, 0, 255), t)
+
+    mid_x = (x1 + x2) // 2
+    mid_y = (y1 + y2) // 2
+    label_color = (180, 180, 180)
+    cv2.putText(frame, "TOP",    (mid_x - 15, y1 - 6),  cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
+    cv2.putText(frame, "BOTTOM", (mid_x - 25, y2 + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
+    cv2.putText(frame, "LEFT",   (x1 - 42, mid_y),      cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
+    cv2.putText(frame, "RIGHT",  (x2 + 6,  mid_y),      cv2.FONT_HERSHEY_SIMPLEX, 0.45, label_color, 1)
+
+# -----------------------------
+# Serial helpers
+# -----------------------------
+def open_serial():
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0)
+        print(f"[Serial] Connected on {SERIAL_PORT} @ {BAUD_RATE} baud.")
+        return ser
+    except serial.SerialException as e:
+        print(f"[Serial] WARNING — {e}. Running without haptics.")
+        return None
+
+def send_motor_packet(ser, packet):
+    if ser is None:
+        return
+    try:
+        ser.write(packet)
+    except serial.SerialException as e:
+        print(f"[Serial] Write error: {e}")
+
+# -----------------------------
+# MoveNet
 # -----------------------------
 module = hub.load(MODEL_URL)
 model = module.signatures["serving_default"]
 
-
-def run_movenet(frame_bgr: np.ndarray) -> np.ndarray:
-    """
-    Runs MoveNet on a BGR OpenCV frame.
-
-    Returns:
-        keypoints_with_scores: numpy array of shape [1, 1, 17, 3]
-        Each keypoint is [y, x, score] in normalized image coordinates.
-    """
+def run_movenet(frame_bgr):
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     image = tf.expand_dims(frame_rgb, axis=0)
     image = tf.image.resize_with_pad(image, INPUT_SIZE, INPUT_SIZE)
     image = tf.cast(image, dtype=tf.int32)
+    return model(image)["output_0"].numpy()
 
-    outputs = model(image)
-    keypoints_with_scores = outputs["output_0"].numpy()
-    return keypoints_with_scores
+def get_keypoint(keypoints, w, h, index):
+    y_norm, x_norm, score = keypoints[0, 0, index]
+    return int(x_norm * w), int(y_norm * h), float(score)
 
+def calculate_arm_angle(shoulder, elbow, wrist):
+    if shoulder[2] < CONF_THRESHOLD or elbow[2] < CONF_THRESHOLD or wrist[2] < CONF_THRESHOLD:
+        return None
+    ba = (shoulder[0] - elbow[0], shoulder[1] - elbow[1])
+    bc = (wrist[0] - elbow[0], wrist[1] - elbow[1])
+    dot = ba[0]*bc[0] + ba[1]*bc[1]
+    mag_ba = math.sqrt(ba[0]**2 + ba[1]**2)
+    mag_bc = math.sqrt(bc[0]**2 + bc[1]**2)
+    if mag_ba == 0 or mag_bc == 0:
+        return None
+    return math.degrees(math.acos(max(-1, min(1, dot / (mag_ba * mag_bc)))))
 
-def get_keypoint_pixel_coords(
-    keypoints_with_scores: np.ndarray,
-    frame_width: int,
-    frame_height: int,
-    keypoint_index: int
-):
-    """
-    Converts a normalized MoveNet keypoint into pixel coordinates.
+# -----------------------------
+# Main loop
+# -----------------------------
+def main():
+    ser = open_serial()
+    # ser = None  # Uncomment to disable haptics while testing
 
-    Returns:
-        (x_px, y_px, score)
-    """
-    y_norm, x_norm, score = keypoints_with_scores[0, 0, keypoint_index]
-    x_px = int(x_norm * frame_width)
-    y_px = int(y_norm * frame_height)
-    return x_px, y_px, float(score)
-
-
-def draw_wrist(frame: np.ndarray, x: int, y: int, score: float, label: str):
-    """
-    Draws wrist point and label on frame.
-    """
-    cv2.circle(frame, (x, y), 8, (0, 255, 0), -1)
-    cv2.putText(
-        frame,
-        f"{label}: ({x}, {y}) s={score:.2f}",
-        (x + 10, y - 10),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
-        (0, 255, 0),
-        2
-    )
-
-
-def choose_wrist(left_wrist, right_wrist):
-    """
-    Choose whichever wrist has higher confidence.
-    Each wrist is (x, y, score).
-    """
-    if left_wrist[2] >= right_wrist[2]:
-        return "left", left_wrist
-    return "right", right_wrist
-
-
-def handle_haptic_feedback(wrist_name: str, wrist_x: int, wrist_y: int, score: float,
-                           frame_width: int, frame_height: int):
-    """
-    Placeholder for your haptic logic.
-
-    Example idea:
-    - Define a target zone in the center of the screen.
-    - If wrist is outside that zone, trigger armband.
-    - If wrist is inside, stop vibration.
-
-    Replace this with serial/bluetooth code to your armband.
-    """
-    target_x = frame_width // 2
-    target_y = frame_height // 2
-    tolerance = 60
-
-    error_x = wrist_x - target_x
-    error_y = wrist_y - target_y
-
-    if score < CONF_THRESHOLD:
-        print("Low confidence wrist detection -> no feedback")
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("Error: Could not open webcam.")
+        if ser: ser.close()
         return
 
-    if abs(error_x) <= tolerance and abs(error_y) <= tolerance:
-        print(f"{wrist_name} wrist in target zone -> vibration OFF")
-    else:
-        print(
-            f"{wrist_name} wrist outside zone -> vibration ON | "
-            f"error_x={error_x}, error_y={error_y}"
-        )
+    last_direction = []  # tracks last sent directions to avoid redundant writes
 
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-def main():
-    cap = cv2.VideoCapture(0)
+            h, w, _ = frame.shape
+            keypoints = run_movenet(frame)
 
-    if not cap.isOpened():
-        raise RuntimeError("Could not open webcam.")
+            ls = get_keypoint(keypoints, w, h, LEFT_SHOULDER)
+            le = get_keypoint(keypoints, w, h, LEFT_ELBOW)
+            lw = get_keypoint(keypoints, w, h, LEFT_WRIST)
+            rs = get_keypoint(keypoints, w, h, RIGHT_SHOULDER)
+            re = get_keypoint(keypoints, w, h, RIGHT_ELBOW)
+            rw = get_keypoint(keypoints, w, h, RIGHT_WRIST)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+            # Pick wrist with higher confidence
+            if lw[2] >= rw[2]:
+                wx, wy, wconf = lw
+                current_elbow, side_label = le, "Left"
+                current_angle = calculate_arm_angle(ls, le, lw)
+            else:
+                wx, wy, wconf = rw
+                current_elbow, side_label = re, "Right"
+                current_angle = calculate_arm_angle(rs, re, rw)
 
-        frame_height, frame_width, _ = frame.shape
+            # ------------------------------------------
+            # Directional exit detection (zone mode)
+            # ------------------------------------------
+            if USE_ZONE_MODE:
+                if wconf >= CONF_THRESHOLD:
+                    directions = get_exit_directions(wx, wy, w, h)
+                else:
+                    directions = []  # lost tracking — all motors off
 
-        keypoints_with_scores = run_movenet(frame)
+                # Only send a packet when the active direction set changes
+                if directions != last_direction:
+                    packet = directions_to_motor_packet(directions) if directions else MOTORS_OFF
+                    send_motor_packet(ser, packet)
+                    last_direction = directions
+                    if directions:
+                        label = " + ".join(d.upper() for d in directions)
+                        print(f"[Haptic] {label} motor(s) ON — {side_label} wrist exited {label}")
+                    else:
+                        print(f"[Haptic] OFF — {side_label} wrist back in zone")
 
-        left_wrist = get_keypoint_pixel_coords(
-            keypoints_with_scores, frame_width, frame_height, LEFT_WRIST
-        )
-        right_wrist = get_keypoint_pixel_coords(
-            keypoints_with_scores, frame_width, frame_height, RIGHT_WRIST
-        )
+                draw_zone(frame, w, h, directions)
 
-        # Draw wrists if confident enough
-        if left_wrist[2] > CONF_THRESHOLD:
-            draw_wrist(frame, left_wrist[0], left_wrist[1], left_wrist[2], "L wrist")
+                # Wrist dot colour
+                dot_color = (0, 0, 255) if directions else (0, 255, 0)
+                if wconf >= CONF_THRESHOLD:
+                    cv2.circle(frame, (wx, wy), 8, dot_color, -1)
 
-        if right_wrist[2] > CONF_THRESHOLD:
-            draw_wrist(frame, right_wrist[0], right_wrist[1], right_wrist[2], "R wrist")
+                # Status text
+                status_text  = "EXIT: " + " + ".join(d.upper() for d in directions) if directions else "IN RANGE"
+                status_color = (0, 0, 255) if directions else (0, 200, 0)
 
-        # Choose one wrist to drive the haptic feedback
-        wrist_name, chosen_wrist = choose_wrist(left_wrist, right_wrist)
-        handle_haptic_feedback(
-            wrist_name,
-            chosen_wrist[0],
-            chosen_wrist[1],
-            chosen_wrist[2],
-            frame_width,
-            frame_height
-        )
+            else:
+                # Original angle mode
+                out_of_range = (current_angle is not None and
+                                current_angle > STRAIGHT_ARM_THRESHOLD)
+                if out_of_range and last_direction != ["angle"]:
+                    send_motor_packet(ser, bytes([1, 1, 1, 1]))
+                    last_direction = ["angle"]
+                    print(f"[Haptic] ON — {side_label} angle {current_angle:.1f}°")
+                elif not out_of_range and last_direction == ["angle"]:
+                    send_motor_packet(ser, MOTORS_OFF)
+                    last_direction = []
+                    print(f"[Haptic] OFF — {side_label} back in range")
 
-        # Draw center target box
-        target_x = frame_width // 2
-        target_y = frame_height // 2
-        tolerance = 60
-        cv2.rectangle(
-            frame,
-            (target_x - tolerance, target_y - tolerance),
-            (target_x + tolerance, target_y + tolerance),
-            (255, 0, 0),
-            2
-        )
+                for pt in [ls, le, lw, rs, re, rw]:
+                    if pt[2] > CONF_THRESHOLD:
+                        cv2.circle(frame, (pt[0], pt[1]), 6, (0, 255, 0), -1)
 
-        cv2.imshow("MoveNet Wrist Tracking", frame)
+                if current_angle is not None:
+                    angle_color = (0, 0, 255) if out_of_range else (0, 255, 0)
+                    cv2.putText(frame,
+                                f"{side_label} Angle: {int(current_angle)} deg",
+                                (current_elbow[0] + 15, current_elbow[1]),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, angle_color, 2)
 
-        # Press q to quit
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+                status_text  = "OUT OF RANGE" if out_of_range else "IN RANGE"
+                status_color = (0, 0, 255) if out_of_range else (0, 200, 0)
 
-    cap.release()
-    cv2.destroyAllWindows()
+            # Draw other joints
+            for pt in [ls, le, rs, re]:
+                if pt[2] > CONF_THRESHOLD:
+                    cv2.circle(frame, (pt[0], pt[1]), 5, (180, 180, 180), -1)
 
+            mode_label = "ZONE" if USE_ZONE_MODE else "ANGLE"
+            cv2.putText(frame, f"[{mode_label}] {status_text}", (10, 38),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, status_color, 3)
+
+            cv2.imshow("Pose Tracker", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+    finally:
+        send_motor_packet(ser, MOTORS_OFF)
+        cap.release()
+        cv2.destroyAllWindows()
+        if ser:
+            ser.close()
+            print("[Serial] Port closed.")
 
 if __name__ == "__main__":
     main()

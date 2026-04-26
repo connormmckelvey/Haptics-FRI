@@ -29,11 +29,36 @@ MOTORS_ALL_OFF = bytes([0, 0, 0, 0])
 # Example: a single rectangle covering the middle third of the frame.
 # Replace with the output from the Zone Designer tool.
 # -----------------------------
+# --- Paste into your arm_range_tracker.py ---
+
+# Canvas was 640x360. Coords are normalized (0.0-1.0) so they
+# scale to any resolution automatically.
+
 ZONES = [
-    {
+    {  # Zone 1 — rectangle
         "type": "rect",
-        "x":  0.25, "y":  0.15,
-        "x2": 0.75, "y2": 0.85,
+        "x":  0.1781,  "y":  0.2722,
+        "x2": 0.7250, "y2": 0.7333,
+    },
+    {  # Zone 2 — rectangle
+        "type": "rect",
+        "x":  0.5266,  "y":  0.4500,
+        "x2": 0.8578, "y2": 0.9306,
+    },
+    {  # Zone 3 — rectangle
+        "type": "rect",
+        "x":  0.6500,  "y":  0.3639,
+        "x2": 0.7969, "y2": 0.5167,
+    },
+    {  # Zone 4 — rectangle
+        "type": "rect",
+        "x":  0.6953,  "y":  0.1389,
+        "x2": 0.8000, "y2": 0.2694,
+    },
+    {  # Zone 5 — rectangle
+        "type": "rect",
+        "x":  0.8547,  "y":  0.2306,
+        "x2": 0.9063, "y2": 0.3111,
     },
 ]
 
