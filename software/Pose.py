@@ -29,9 +29,12 @@ MOTORS_OFF = bytes([0, 0, 0, 0])
 # Coords are normalized 0.0–1.0 so they scale to any resolution.
 # -----------------------------
 ZONES = [
-    {  # Zone 1 — polygon
-        "type": "polygon",
-        "pts": [(0.4070, 0.2399), (0.5000, 0.1541), (0.5676, 0.1402), (0.6190, 0.1624), (0.7578, 0.3672), (0.7703, 0.5000), (0.7547, 0.5000), (0.7375, 0.5637), (0.6377, 0.6439), (0.5000, 0.6605), (0.5000, 0.6827), (0.4366, 0.7076), (0.3820, 0.6965), (0.3243, 0.6024), (0.3025, 0.4446), (0.3368, 0.3284), (0.3649, 0.2758), (0.4007, 0.2675), (0.4194, 0.2177)],
+    {
+        "type": "rect",
+        "x": 0.25,
+        "y": 0.25,
+        "x2": 0.75,
+        "y2": 0.75,
     },
 ]
 
@@ -194,6 +197,7 @@ def main():
             ret, frame = cap.read()
             if not ret:
                 break
+            frame = cv2.flip(frame, 1)
 
             h, w, _ = frame.shape
             keypoints = run_movenet(frame)
@@ -211,9 +215,9 @@ def main():
             #    current_elbow, side_label = le, "Left"
             #    current_angle = calculate_arm_angle(ls, le, lw)
             #else:
-            wx, wy, wconf = rw
-            current_elbow, side_label = re, "Right"
-            current_angle = calculate_arm_angle(rs, re, rw)
+            wx, wy, wconf = lw
+            current_elbow, side_label = le, "Right"
+            current_angle = calculate_arm_angle(ls, le, lw)
 
             # ------------------------------------------
             # Directional exit detection (zone mode)
