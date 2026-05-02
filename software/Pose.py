@@ -5,12 +5,10 @@ import tensorflow_hub as hub
 import math
 import serial
 
-# -----------------------------
-# Configuration
-# -----------------------------
+# Config
 MODEL_URL = "https://tfhub.dev/google/movenet/singlepose/lightning/4"
 INPUT_SIZE = 192
-CONF_THRESHOLD = 0.3
+CONF_THRESHOLD = 0.15
 
 LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST = 5, 7, 9
 RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST = 6, 8, 10
@@ -20,35 +18,26 @@ STRAIGHT_ARM_THRESHOLD = 160
 SERIAL_PORT = "COM5"
 BAUD_RATE = 115200
 
-# Motor packet: [top, right, bottom, left]
+# Motor packet [top, right, bottom, left]
 MOTORS_OFF = bytes([0, 0, 0, 0])
 
-# -----------------------------
-# ZONES — paste the output from the Zone Designer here.
-# Supports both "rect" and "polygon" types.
-# Coords are normalized 0.0–1.0 so they scale to any resolution.
-# -----------------------------
+# ZONES
 ZONES = [
-    {
+    {  # Zone 1 - rect
         "type": "rect",
-        "x": 0.25,
-        "y": 0.25,
-        "x2": 0.75,
-        "y2": 0.75,
+        "x":  0.3025,  "y":  0.2952,
+        "x2": 0.7328, "y2": 0.7297,
     },
 ]
 
-# Set to True to use zone-based detection, False for original angle mode
+# True is zone based detection and false is angle mode
 USE_ZONE_MODE = True
 
-# -----------------------------
-# Zone geometry helpers
-# -----------------------------
+# Zone helpers
 def _point_in_zone(nx, ny, zone):
-    """Returns True if normalized point (nx, ny) is inside a single zone."""
     if zone["type"] == "rect":
         return zone["x"] <= nx <= zone["x2"] and zone["y"] <= ny <= zone["y2"]
-    # Polygon — ray-casting algorithm
+    # Polygon ray-casting algorithm
     pts = zone["pts"]
     inside = False
     j = len(pts) - 1
@@ -61,30 +50,22 @@ def _point_in_zone(nx, ny, zone):
     return inside
 
 def _zone_bounding_box(zone):
-    """Returns (x, y, x2, y2) normalized bounding box for any zone type."""
     if zone["type"] == "rect":
         return zone["x"], zone["y"], zone["x2"], zone["y2"]
     xs = [p[0] for p in zone["pts"]]
     ys = [p[1] for p in zone["pts"]]
     return min(xs), min(ys), max(xs), max(ys)
 
-# -----------------------------
 # Directional exit detection
-# -----------------------------
 def get_exit_directions(wx_px, wy_px, frame_w, frame_h):
-    """
-    Returns a list of directions the wrist has exited relative to the combined
-    bounding box of all zones. Returns empty list if inside any zone.
-    Supports both rect and polygon zones.
-    """
     nx = wx_px / frame_w
     ny = wy_px / frame_h
 
-    # If the wrist is inside ANY zone, it is in range — no haptic needed
+    # If the wrist is inside any zone no haptic needed
     if any(_point_in_zone(nx, ny, z) for z in ZONES):
         return []
 
-    # Wrist is outside all zones — determine exit direction from combined bbox
+    # Wrist is outside all zones, determine exit direction from combined bbox
     all_x1 = min(_zone_bounding_box(z)[0] for z in ZONES)
     all_y1 = min(_zone_bounding_box(z)[1] for z in ZONES)
     all_x2 = max(_zone_bounding_box(z)[2] for z in ZONES)
@@ -98,7 +79,6 @@ def get_exit_directions(wx_px, wy_px, frame_w, frame_h):
     return directions
 
 def directions_to_motor_packet(directions):
-    """Builds a 4-byte packet [top, right, bottom, left] from a list of directions."""
     top    = 1 if "top"    in directions else 0
     right  = 1 if "right"  in directions else 0
     bottom = 1 if "bottom" in directions else 0
@@ -106,7 +86,6 @@ def directions_to_motor_packet(directions):
     return bytes([top, right, bottom, left])
 
 def draw_zone(frame, frame_w, frame_h, directions):
-    """Draw all zones onto the frame, highlighting exit edges on rects."""
     for zone in ZONES:
         if zone["type"] == "rect":
             x1 = int(zone["x"]  * frame_w)
@@ -128,16 +107,14 @@ def draw_zone(frame, frame_w, frame_h, directions):
             color = (0, 0, 255) if directions else (0, 200, 200)
             cv2.polylines(frame, [pts_px], isClosed=True, color=color, thickness=2)
 
-# -----------------------------
 # Serial helpers
-# -----------------------------
 def open_serial():
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0)
         print(f"[Serial] Connected on {SERIAL_PORT} @ {BAUD_RATE} baud.")
         return ser
     except serial.SerialException as e:
-        print(f"[Serial] WARNING — {e}. Running without haptics.")
+        print(f"[Serial] WARNING - {e}. Running without haptics.")
         return None
 
 def send_motor_packet(ser, packet):
@@ -148,9 +125,7 @@ def send_motor_packet(ser, packet):
     except serial.SerialException as e:
         print(f"[Serial] Write error: {e}")
 
-# -----------------------------
 # MoveNet
-# -----------------------------
 module = hub.load(MODEL_URL)
 model = module.signatures["serving_default"]
 
@@ -177,12 +152,9 @@ def calculate_arm_angle(shoulder, elbow, wrist):
         return None
     return math.degrees(math.acos(max(-1, min(1, dot / (mag_ba * mag_bc)))))
 
-# -----------------------------
-# Main loop
-# -----------------------------
+# Main
 def main():
     ser = open_serial()
-    # ser = None  # Uncomment to disable haptics while testing
 
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -190,7 +162,7 @@ def main():
         if ser: ser.close()
         return
 
-    last_direction = []  # tracks last sent directions to avoid redundant writes
+    last_direction = []
 
     try:
         while True:
@@ -209,24 +181,16 @@ def main():
             re = get_keypoint(keypoints, w, h, RIGHT_ELBOW)
             rw = get_keypoint(keypoints, w, h, RIGHT_WRIST)
 
-            # Pick wrist with higher confidence
-            #if lw[2] >= rw[2]:
-            #    wx, wy, wconf = lw
-            #    current_elbow, side_label = le, "Left"
-            #    current_angle = calculate_arm_angle(ls, le, lw)
-            #else:
             wx, wy, wconf = lw
             current_elbow, side_label = le, "Right"
             current_angle = calculate_arm_angle(ls, le, lw)
 
-            # ------------------------------------------
-            # Directional exit detection (zone mode)
-            # ------------------------------------------
+            # Zone mode
             if USE_ZONE_MODE:
                 if wconf >= CONF_THRESHOLD:
                     directions = get_exit_directions(wx, wy, w, h)
                 else:
-                    directions = []  # lost tracking — all motors off
+                    directions = []  # lost tracking, all motors off
 
                 # Only send a packet when the active direction set changes
                 if directions != last_direction:
@@ -235,13 +199,13 @@ def main():
                     last_direction = directions
                     if directions:
                         label = " + ".join(d.upper() for d in directions)
-                        print(f"[Haptic] {label} motor(s) ON — {side_label} wrist exited {label}")
+                        print(f"[Haptic] {label} motor(s) ON - {side_label} wrist exited {label}")
                     else:
-                        print(f"[Haptic] OFF — {side_label} wrist back in zone")
+                        print(f"[Haptic] OFF - {side_label} wrist back in zone")
 
                 draw_zone(frame, w, h, directions)
 
-                # Wrist dot colour
+                # Wrist dot color
                 dot_color = (0, 0, 255) if directions else (0, 255, 0)
                 if wconf >= CONF_THRESHOLD:
                     cv2.circle(frame, (wx, wy), 8, dot_color, -1)
@@ -251,17 +215,17 @@ def main():
                 status_color = (0, 0, 255) if directions else (0, 200, 0)
 
             else:
-                # Original angle mode
+                # Angle mode
                 out_of_range = (current_angle is not None and
                                 current_angle > STRAIGHT_ARM_THRESHOLD)
                 if out_of_range and last_direction != ["angle"]:
                     send_motor_packet(ser, bytes([1, 1, 1, 1]))
                     last_direction = ["angle"]
-                    print(f"[Haptic] ON — {side_label} angle {current_angle:.1f}°")
+                    print(f"[Haptic] ON - {side_label} angle {current_angle:.1f}°")
                 elif not out_of_range and last_direction == ["angle"]:
                     send_motor_packet(ser, MOTORS_OFF)
                     last_direction = []
-                    print(f"[Haptic] OFF — {side_label} back in range")
+                    print(f"[Haptic] OFF - {side_label} back in range")
 
                 for pt in [ls, le, lw, rs, re, rw]:
                     if pt[2] > CONF_THRESHOLD:
